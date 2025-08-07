@@ -11,6 +11,7 @@ typedef struct {
     int8_t octave_shift; // relative to reference: 0, +1, -1, +2, etc.
     int value; // 1, 2, 4, 8, 16, etc. (note value)
     bool dotted; // true if this is a dotted note (1.5x duration)
+    int8_t tuplet; // 0 = normal, 3 = triplet, 5 = quintuplet, 6 = sextuplet, 7 = septuplet
 } note_t;
 
 // Temperament system
@@ -86,5 +87,7 @@ void test_frequencies(void);
 void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver);
 void test_twinkle_twinkle(const audio_driver_t* driver);
 void test_row_row_row(const audio_driver_t* driver);
+void test_crow_song(const audio_driver_t* driver);
+void test_triplets(const audio_driver_t* driver);
 
 #endif // MUSIC_H

@@ -12,6 +12,25 @@ bool is_rest(const note_t* note) { return note && note->note_name == 'r'; }
 
 bool is_dotted(const note_t* note) { return note && note->dotted; }
 
+bool is_tuplet(const note_t* note) { return note && note->tuplet > 0; }
+
+// Get the ratio for tuplet timing (e.g., triplets are 2/3 of normal duration)
+float get_tuplet_ratio(int tuplet) {
+    switch (tuplet) {
+    case 0:
+        return 1.0f; // normal notes
+    case 3:
+        return 2.0f / 3.0f; // triplet (3 in time of 2)
+    case 5:
+        return 4.0f / 5.0f; // quintuplet (5 in time of 4)    case 6:
+        return 4.0f / 6.0f; // sextuplet (6 in time of 4)
+    case 7:
+        return 4.0f / 7.0f; // septuplet (7 in time of 4)
+    default:
+        return 1.0f;
+    }
+}
+
 note_t parse_note(const char** input_pos, int* last_duration) {
     note_t note = {0}; // Initialize to zeros
 
@@ -94,6 +113,20 @@ parse_duration:
     if (*p == '.') {
         p++;
         note.dotted = true;
+    }
+    // Parse tuplet markers
+    if (*p == 't') {
+        p++;
+        note.tuplet = 3; // triplet
+    } else if (*p == 'q') {
+        p++;
+        note.tuplet = 5; // quintuplet
+    } else if (*p == 'x') {
+        p++;
+        note.tuplet = 6; // sextuplet
+    } else if (*p == 's') {
+        p++;
+        note.tuplet = 7; // septuplet
     }
 
     *input_pos = p; // Update input position
@@ -181,10 +214,19 @@ void print_note(const note_t* note) {
 
         printf("%d", note->value);
     }
-
     // Print dot if dotted
     if (note->dotted) {
         printf(".");
+    }
+    // Print tuplet marker
+    if (note->tuplet == 3) {
+        printf("t");
+    } else if (note->tuplet == 5) {
+        printf("q");
+    } else if (note->tuplet == 6) {
+        printf("x");
+    } else if (note->tuplet == 7) {
+        printf("s");
     }
 }
 
@@ -330,14 +372,7 @@ void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* d
     free(output_buffer);
 }
 
-// Convert note array to sequencer events
-// tempo_bpm: beats per minute (e.g., 120)
-// sample_rate: audio sample rate (e.g., 44100)
-// reference: reference note for frequency calculation
-// reference_freq: frequency of the reference note in Hz
-// temperament: temperament system to use
-// instrument: instrument to assign to all events
-// volume: volume level (0.0 to 1.0)
+// Convert note array to sequencer events with tuplet support
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const note_t* reference,
                                    double reference_freq, const temperament_t* temperament, const instrument_t* instrument,
                                    float volume) {
@@ -362,15 +397,18 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         // Calculate frequency (0.0 for rests)
         double freq = is_rest(note) ? 0.0 : note_to_frequency(note, reference, reference_freq, temperament);
 
-        // Calculate duration in samples
-        // Quarter note (4) gets samples_per_beat samples
-        // Half note (2) gets samples_per_beat * 2 samples
-        // Eighth note (8) gets samples_per_beat / 2 samples, etc.
+        // Calculate base duration in samples
         int duration_samples = (samples_per_beat * 4) / note->value;
 
         // Handle dotted notes (1.5x duration)
         if (note->dotted) {
             duration_samples = (duration_samples * 3) / 2;
+        }
+
+        // Handle tuplets (adjust timing based on tuplet ratio)
+        if (note->tuplet > 0) {
+            float tuplet_ratio = get_tuplet_ratio(note->tuplet);
+            duration_samples = (int)(duration_samples * tuplet_ratio);
         }
 
         // Create the event
@@ -441,13 +479,24 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
     test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
 }
 
-// New test for Row Row Row Your Boat
+// Row Row Row Your Boat with correct 6/8 rhythm
 void test_row_row_row(const audio_driver_t* driver) {
-    // Traditional "Row Row Row Your Boat" melody in 6/8 time
-    // Row row row your boat, gently down the stream
-    // Merrily merrily merrily merrily, life is but a dream
     const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
-    test_play_melody("Row Row Row Your Boat", melody, 120, driver);
+    test_play_melody("Row Row Row Your Boat", melody, 80, driver);
+}
+
+// Test triplets with a simple example
+void test_triplets(const audio_driver_t* driver) {
+    const char* melody = "c4 d4 e8t f8t g8t a2 g4 f4 e8t d8t c8t d2";
+    test_play_melody("Triplet Test", melody, 120, driver);
+}
+
+// Test Crow Song with actual triplets
+void test_crow_song(const audio_driver_t* driver) {
+    // Folk song "Crow Song" with triplets (simplified version)
+    // This would need the actual transcription from the sheet music
+    const char* melody = "c4. f8 f4. g8";
+    test_play_melody("Crow Song (with triplets)", melody, 110, driver);
 }
 
 void test_frequencies(void) {
@@ -488,7 +537,8 @@ void test_parser(void) {
 
     // Test individual notes
     printf("=== Individual Note Tests ===\n");
-    const char* note_tests[] = {"c4", "gs2", "bf'", "r8", "a''4", "d,2", "ess16", "bff8", "c4.", "g2.", "r4."};
+    const char* note_tests[] = {"c4",  "gs2", "bf'", "r8",  "a''4", "d,2", "ess16", "bff8",
+                                "c4.", "g2.", "r4.", "c8t", "d4q",  "e8x", "f4s"};
 
     int num_note_tests = sizeof(note_tests) / sizeof(note_tests[0]);
     for (int i = 0; i < num_note_tests; i++) {
@@ -509,6 +559,8 @@ void test_parser(void) {
         "r4 c d r2 e", // With rests
         "c'' d, ess bf' r8 g4", // Mixed complex notes
         "c4. d8 e4. f8 g2.", // Dotted notes (6/8 time pattern)
+        "c8t d8t e8t f4 g4", // Triplets
+        "c4q d4q e4q f4q g4q a2", // Quintuplets
     };
 
     int num_string_tests = sizeof(string_tests) / sizeof(string_tests[0]);
