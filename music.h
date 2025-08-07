@@ -50,9 +50,11 @@ typedef struct {
 } note_array_t;
 
 typedef struct {
+    const char* name;
     void* (*init)(int rate, int channels, int* error);
     int (*play)(void* context, float* samples, int sample_count);
     void (*cleanup)(void* context);
+    const char* (*strerror)(int error);
 } audio_driver_t;
 
 // Parser functions

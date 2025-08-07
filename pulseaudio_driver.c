@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "music.h"
+
 pa_simple* pulseaudio_init(int rate, int channels, int* error) {
     // Audio format specification
     pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = rate};
@@ -22,6 +24,19 @@ pa_simple* pulseaudio_init(int rate, int channels, int* error) {
     return s;
 }
 
+int pulseaudio_play(pa_simple* s, float* samples, int sample_count) {
+    int error;
+
+    if (pa_simple_write(s, samples, sample_count * sizeof(float), &error))
+        return error;
+    if (pa_simple_drain(s, &error))
+        return error;
+    return 0;
+}
+
+const audio_driver_t pulseaudio_driver = {
+    .name = "PulseAudio", .init = pulseaudio_init, .play = pulseaudio_play, .cleanup = pa_simple_free};
+
 void play_tone_pulse(double frequency, int duration_ms, float volume) {
     const int sample_rate = 44100;
     const int samples_per_ms = sample_rate / 1000;
@@ -29,7 +44,7 @@ void play_tone_pulse(double frequency, int duration_ms, float volume) {
 
     // Create PulseAudio connection
     int error;
-    pa_simple* s = pulseaudio_init(sample_rate, 1, &error);
+    void* context = pulseaudio_driver.init(sample_rate, 1, &error);
 
     // Generate audio samples
     float* samples = malloc(total_samples * sizeof(float));
@@ -45,10 +60,9 @@ void play_tone_pulse(double frequency, int duration_ms, float volume) {
     }
 
     // Play the audio
-    pa_simple_write(s, samples, total_samples * sizeof(float), &error);
-    pa_simple_drain(s, &error); // Wait for playback to complete
+    pulseaudio_driver.play(context, samples, total_samples);
 
     // Cleanup
     free(samples);
-    pa_simple_free(s);
+    pulseaudio_driver.cleanup(context);
 }

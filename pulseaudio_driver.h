@@ -1,5 +1,7 @@
-#ifndef PA_H
-#define PA_H
+#ifndef PULSEAUDIO_DRIVER_H
+#define PULSEAUDIO_DRIVER_H
+
+#include "music.h"
 
 // Play a single tone using PulseAudio
 // frequency: Hz (0.0 for silence/rest)
@@ -7,4 +9,6 @@
 // volume: 0.0 to 1.0
 void play_tone_pulse(double frequency, int duration_ms, float volume);
 
-#endif // PA_H
+extern const audio_driver_t pulseaudio_driver;
+
+#endif // PULSEAUDIO_DRIVER_H
