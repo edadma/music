@@ -920,9 +920,9 @@ void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
     // play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
     // Multi-voice version with bass accompaniment
-    play("Mary Had a Little Lamb (With Bass)", 94, driver,
-         "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", // melody
-         "f2 bf2 f2 c2 f2 bf2 f1 f2 bf2 f2 c2 f2 bf2 f1", // bass
+    play("Mary Had a Little Lamb (With Bass)", 120, driver,
+         "e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
+         "f,2   bf,2   f,2   bf,2  g,2   bf,2  f,2   bf,2  f,2 bf,2 f,2  bf,2 g,2  bf,2 f,1", // bass
          NULL);
 }
 
