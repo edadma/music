@@ -2,6 +2,8 @@
 // #include <stdlib.h>
 // #include <time.h>
 
+#include <stddef.h>
+
 #include "music.h"
 #include "pulseaudio_driver.h"
 
@@ -18,15 +20,22 @@ int main(void) {
     // play_tone_pulse(440.0, 1000, 0.5); // A4 for 1 second at half volume
     // sleep_ms(500);
 
-    // Test the melody
-    // const char* custom_melody = "c4 d e f g a b c'2 r4 c' b a g f e d c2";
-    // test_play_melody("C Major Scale", custom_melody, 140, &pulseaudio_driver);
+    // Test basic melodies
+    // test_twinkle_twinkle(&pulseaudio_driver);
 
     // Test new chord functionality!
-    // test_chords(&pulseaudio_driver);
+    test_chords(&pulseaudio_driver);
+
+    // Test new multi-voice functionality!
+    // test_mary_had_a_little_lamb(&pulseaudio_driver);
+    //
+    // // Demonstrate the new play() API directly
+    // play("Simple Canon", 140, &pulseaudio_driver,
+    //      "c4 d e f g a b c'2", // Voice 1
+    //      "r2 c4 d e f g a b c'", // Voice 2 (delayed)
+    //      NULL);
 
     // Uncomment any of these for additional tests:
-    test_mary_had_a_little_lamb(&pulseaudio_driver);
     // test_row_row_row(&pulseaudio_driver);
     // test_triplets(&pulseaudio_driver);
     // test_parser();

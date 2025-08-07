@@ -94,6 +94,11 @@ void bass_boost_adjustment(sequencer_event_t* events, int start_index, int chord
 // Instruments
 extern const instrument_t pluck_sine_instrument;
 
+// High-level playback functions
+void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...);
+sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, sequencer_event_t* events2, int count2,
+                                      int* total_count);
+
 // Test function
 void test_parser(void);
 void test_frequencies(void);

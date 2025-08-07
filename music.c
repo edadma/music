@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,6 +39,7 @@ float get_tuplet_ratio(int tuplet) {
 note_t parse_note_without_duration(const char** input_pos) {
     note_t note = {0}; // Initialize all fields to 0, including chord_id
     const char* p = *input_pos;
+
     // Skip whitespace
     while (*p && isspace(*p)) {
         p++;
@@ -725,6 +727,122 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
     return events;
 }
 
+// Helper function to compare events by start time for sorting
+int compare_start_times(const void* a, const void* b) {
+    const sequencer_event_t* event_a = (const sequencer_event_t*)a;
+    const sequencer_event_t* event_b = (const sequencer_event_t*)b;
+
+    if (event_a->start_sample < event_b->start_sample)
+        return -1;
+    if (event_a->start_sample > event_b->start_sample)
+        return 1;
+    return 0;
+}
+
+// Merge two event arrays into one, maintaining chronological order
+sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, sequencer_event_t* events2, int count2,
+                                      int* total_count) {
+    *total_count = count1 + count2;
+    sequencer_event_t* merged = malloc(*total_count * sizeof(sequencer_event_t));
+    if (!merged) {
+        *total_count = 0;
+        return NULL;
+    }
+
+    // Copy first voice
+    memcpy(merged, events1, count1 * sizeof(sequencer_event_t));
+
+    // Copy second voice
+    memcpy(merged + count1, events2, count2 * sizeof(sequencer_event_t));
+
+    // Sort by start_sample to maintain chronological order
+    qsort(merged, *total_count, sizeof(sequencer_event_t), compare_start_times);
+
+    return merged;
+}
+
+// High-level play function - takes multiple voice strings as var args
+void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
+    printf("=== Playing %s ===\n", name);
+    printf("Tempo: %d BPM\n", tempo_bpm);
+
+    va_list args;
+    va_start(args, driver);
+
+    // Count voices and collect music strings
+    const char* voices[16]; // Max 16 voices
+    int voice_count = 0;
+    const char* music_string;
+
+    while ((music_string = va_arg(args, const char*)) != NULL && voice_count < 16) {
+        voices[voice_count++] = music_string;
+    }
+    va_end(args);
+
+    if (voice_count == 0) {
+        printf("No music provided!\n");
+        return;
+    }
+
+    printf("Voices: %d\n", voice_count);
+    for (int i = 0; i < voice_count; i++) {
+        printf("  Voice %d: %s\n", i + 1, voices[i]);
+    }
+    printf("\n");
+
+    // Parse all voices and convert to events
+    sequencer_event_t* all_events = NULL;
+    int total_events = 0;
+
+    const int sample_rate = 44100;
+
+    for (int v = 0; v < voice_count; v++) {
+        // Parse this voice
+        note_array_t notes = parse_music(voices[v]);
+        if (notes.count == 0) {
+            printf("Warning: Voice %d is empty\n", v + 1);
+            free_note_array(&notes);
+            continue;
+        }
+
+        // Convert to events
+        sequencer_event_t* voice_events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament,
+                                                          &pluck_sine_instrument, 0.3f, sqrt_chord_adjustment);
+
+        if (v == 0) {
+            // First voice - just copy
+            all_events = voice_events;
+            total_events = notes.count;
+        } else {
+            // Merge with existing events
+            sequencer_event_t* merged = merge_event_arrays(all_events, total_events, voice_events, notes.count, &total_events);
+
+            // Free old arrays
+            free(all_events);
+            free(voice_events);
+
+            all_events = merged;
+        }
+
+        free_note_array(&notes);
+    }
+
+    if (!all_events || total_events == 0) {
+        printf("No events to play!\n");
+        return;
+    }
+
+    printf("Playing %d total events...\n", total_events);
+
+    // Play the merged sequence
+    play_sequence(all_events, total_events, (audio_driver_t*)driver, sample_rate);
+
+    printf("%s complete!\n\n", name);
+
+    // Cleanup
+    free(all_events);
+}
+
 // Generalized melody player function
 void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver) {
     printf("=== Playing %s with Sequencer ===\n", song_name);
@@ -770,11 +888,24 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
 
 // Test chord functionality
 void test_chords(const audio_driver_t* driver) {
-    const char* chord_progression = "c4 <c e g>2 f4 <f a c'>2 g4 <g b d'>1";
-    test_play_melody("Basic Chord Progression", chord_progression, 100, driver);
+    // const char* chord_progression = "c4 <c e g>2 f4 <f a c'>2 g4 <g b d'>1";
+    // test_play_melody("Basic Chord Progression", chord_progression, 100, driver);
+    //
+    // const char* arpeggiated = "c4 e g c' <c e g c'>1";
+    // test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
 
-    const char* arpeggiated = "c4 e g c' <c e g c'>1";
-    test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
+    // Demonstrate multi-voice polyphony with new play() function
+    play("Two-Voice Counterpoint", 120, driver,
+         "c4 d e f g a b c'2", // Voice 1: ascending scale
+         "c2 f2 e2 g2 c'1", // Voice 2: slower harmony
+         NULL);
+
+    // Three-voice example
+    play("Three-Voice Harmony", 100, driver,
+         "c4 d e f g f e d c2", // Melody
+         "c2 f2 g2 c2", // Bass
+         "e2 a2 g2 e2", // Middle voice
+         NULL);
 }
 
 // Wrapper function to keep backward compatibility
@@ -783,36 +914,22 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
     test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
 }
 
-// Mary Had a Little Lamb
-// void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
-//     const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2";
-//     test_play_melody("Mary Had a Little Lamb", melody, 120, driver);
-// }
-
 // Mary Had a Little Lamb - enhanced version with accompaniment
 void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
-    // Simple melody version
-    const char* simple_melody = "e4 d c d e e e2 d4 d d2 e4 g g2"; //  e4 d c d e e e e d d e d c2
-    test_play_melody("Mary Had a Little Lamb (Simple)", simple_melody, 120, driver);
+    // Simple single-voice version using new API
+    play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
-    // Enhanced version with chord accompaniment (based on the sheet music)
-    // In F major: E D C D corresponds to scale degrees 7 6 5 6, so chords would be F, Bb, F progression
-    // const char* with_chords =
-    //     // "Mary had a little lamb"
-    //     "<e f a>4 <d f bf> <c f a> <d f bf> <e f a> <e f a> <e f a>2 "
-    //     // "little lamb, little lamb"
-    //     "<d f bf>4 <d f bf> <d f bf>2 <e g c'>4 <g c' e'> <g c' e'>2 "
-    //     // "Mary had a little lamb, its fleece was white as snow"
-    //     "<e f a>4 <d f bf> <c f a> <d f bf> <e f a> <e f a> <e f a> <e f a> "
-    //     "<d f bf> <d f bf> <e g c'> <d f bf> <c f a>1";
-    //
-    // test_play_melody("Mary Had a Little Lamb (With Chords)", with_chords, 94, driver);
+    // Multi-voice version with bass accompaniment
+    play("Mary Had a Little Lamb (With Bass)", 94, driver,
+         "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", // melody
+         "f2 bf2 f2 c2 f2 bf2 f1 f2 bf2 f2 c2 f2 bf2 f1", // bass
+         NULL);
 }
 
 // Row Row Row Your Boat with correct 6/8 rhythm
 void test_row_row_row(const audio_driver_t* driver) {
     const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
-    test_play_melody("Row Row Row Your Boat", melody, 120, driver);
+    test_play_melody("Row Row Row Your Boat", melody, 80, driver);
 }
 
 // Test triplets with a simple example
