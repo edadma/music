@@ -4,7 +4,7 @@
 #include <time.h>
 
 #include "music.h"
-#include "pa.h"
+#include "pulseaudio_driver.h"
 
 void sleep_ms(int milliseconds) {
     struct timespec ts;

@@ -1,4 +1,4 @@
-#include "pa.h"
+#include "pulseaudio_driver.h"
 
 #include <math.h>
 #include <pulse/error.h>
@@ -7,22 +7,29 @@
 #include <stdlib.h>
 #include <string.h>
 
+pa_simple* pulseaudio_init(int rate, int channels, int* error) {
+    // Audio format specification
+    pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = rate};
+
+    // Create PulseAudio connection
+    pa_simple* s = pa_simple_new(NULL, "Music Player", PA_STREAM_PLAYBACK, NULL, "music", &ss, NULL, NULL, error);
+
+    if (!s) {
+        printf("PulseAudio error: %s\n", pa_strerror(*error));
+        return NULL;
+    }
+
+    return s;
+}
+
 void play_tone_pulse(double frequency, int duration_ms, float volume) {
     const int sample_rate = 44100;
-    const int channels = 1; // Mono
     const int samples_per_ms = sample_rate / 1000;
     const int total_samples = duration_ms * samples_per_ms;
 
-    // Audio format specification
-    pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = sample_rate};
-
     // Create PulseAudio connection
     int error;
-    pa_simple* s = pa_simple_new(NULL, "Music Player", PA_STREAM_PLAYBACK, NULL, "music", &ss, NULL, NULL, &error);
-    if (!s) {
-        printf("PulseAudio error: %s\n", pa_strerror(error));
-        return;
-    }
+    pa_simple* s = pulseaudio_init(sample_rate, 1, &error);
 
     // Generate audio samples
     float* samples = malloc(total_samples * sizeof(float));

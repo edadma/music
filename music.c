@@ -260,6 +260,65 @@ double note_to_frequency(const note_t* note, const note_t* reference, double ref
 // Standard temperament definitions
 const temperament_t equal_temperament = {.name = "Equal Temperament", .note_to_freq = equal_temperament_freq};
 
+int calculate_total_samples(sequencer_event_t* events, int event_count) {
+    int max_end = 0;
+    for (int i = 0; i < event_count; i++) {
+        int event_end = events[i].start_sample + events[i].duration_samples;
+        if (event_end > max_end) {
+            max_end = event_end;
+        }
+    }
+    return max_end;
+}
+
+float pluck_sine_instrument_samples(const sequencer_event_t* event, int sample_index, int sample_rate) {
+    // Generate sine wave
+    float sine = sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
+    // Apply pluck envelope (exponential decay)
+    float t = (float)sample_index / event->duration_samples;
+    float envelope = exp(-3.0 * t);
+
+    return event->volume * envelope * sine;
+}
+
+const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .event_to_samples = pluck_sine_instrument_samples};
+
+void generate_sequence(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate) {
+    memset(output_buffer, 0, buffer_size * sizeof(float));
+
+    for (int e = 0; e < event_count; e++) {
+        sequencer_event_t* event = &events[e];
+
+        for (int i = 0; i < event->duration_samples; i++) {
+            int output_index = event->start_sample + i;
+            if (output_index >= buffer_size)
+                break;
+
+            // Let the instrument generate the sample
+            float sample = event->instrument.event_to_samples(event, i, sample_rate);
+            output_buffer[output_index] += sample;
+        }
+    }
+}
+
+void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate) {
+    // Pre-allocate based on total length
+    int total_samples = calculate_total_samples(events, event_count);
+    float* output_buffer = malloc(total_samples * sizeof(float));
+    int error;
+    void* context = driver->init(sample_rate, 1, &error);
+
+    // Generate all audio
+    generate_sequence(events, event_count, output_buffer, total_samples, sample_rate);
+
+    // Play it all at once
+    driver->play(context, output_buffer, total_samples);
+
+    // Cleanup
+    driver->cleanup(context);
+    free(output_buffer);
+}
+
 void test_frequencies(void) {
     printf("=== Frequency Conversion Tests ===\n");
 
