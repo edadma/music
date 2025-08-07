@@ -115,6 +115,7 @@ parse_duration:
         p++;
         note.dotted = true;
     }
+
     // Parse tuplet markers
     if (*p == 't') {
         p++;
