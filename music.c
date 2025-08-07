@@ -547,9 +547,22 @@ int calculate_total_samples(sequencer_event_t* events, int event_count) {
 float pluck_sine_instrument_samples(const sequencer_event_t* event, int sample_index, int sample_rate) {
     // Generate sine wave
     float sine = sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
-    // Apply pluck envelope (exponential decay)
+
+    // Calculate time progress (0.0 to 1.0)
     float t = (float)sample_index / event->duration_samples;
-    float envelope = exp(-3.0 * t);
+
+    // Attack phase: very fast rise (first 5ms or 2% of note, whichever is smaller)
+    float attack_time = fmin(0.005f * sample_rate / event->duration_samples, 0.02f); // 5ms or 2%
+    float envelope;
+
+    if (t < attack_time) {
+        // Linear attack from 0 to 1 over attack_time
+        envelope = t / attack_time;
+    } else {
+        // Exponential decay after attack
+        float decay_t = (t - attack_time) / (1.0f - attack_time); // Normalize decay time
+        envelope = exp(-4.0f * decay_t); // Exponential decay
+    }
 
     return event->volume * envelope * sine;
 }
