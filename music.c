@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MAX_CHORD_SIZE 8
+
 bool is_valid_note_name(char c) { return (c >= 'a' && c <= 'g') || (c == 'r'); }
 
 bool is_rest(const note_t* note) { return note && note->note_name == 'r'; }
@@ -32,8 +34,176 @@ float get_tuplet_ratio(int tuplet) {
     }
 }
 
+// Parse note name, accidentals, octave - but NOT duration
+note_t parse_note_without_duration(const char** input_pos) {
+    note_t note = {0}; // Initialize all fields to 0, including chord_id
+    const char* p = *input_pos;
+    // Skip whitespace
+    while (*p && isspace(*p)) {
+        p++;
+    }
+
+    if (!*p) {
+        *input_pos = p;
+        return note;
+    }
+
+    // Check for rest
+    if (*p == 'r') {
+        note.note_name = 'r';
+        p++;
+        *input_pos = p;
+        return note;
+    }
+
+    // Parse note name (a-g)
+    if (!is_valid_note_name(*p)) {
+        *input_pos = p;
+        return note;
+    }
+
+    note.note_name = *p;
+    p++;
+
+    // Parse accidentals (s for sharp, f for flat)
+    while (*p == 's' || *p == 'f') {
+        if (*p == 's') {
+            note.accidental++;
+        } else if (*p == 'f') {
+            note.accidental--;
+        }
+        p++;
+    }
+
+    // Parse octave shifts (' for up, , for down)
+    while (*p == '\'' || *p == ',') {
+        if (*p == '\'') {
+            note.octave_shift++;
+        } else if (*p == ',') {
+            note.octave_shift--;
+        }
+        p++;
+    }
+
+    *input_pos = p;
+    return note;
+}
+
+// Apply duration/dots/tuplets to notes
+void parse_duration_and_modifiers(const char** input_pos, int* last_duration, note_t* notes, int note_count) {
+    const char* p = *input_pos;
+
+    // Parse duration
+    int duration = *last_duration; // default
+    if (isdigit(*p)) {
+        duration = 0;
+        while (isdigit(*p)) {
+            duration = duration * 10 + (*p - '0');
+            p++;
+        }
+
+        // Validate duration (power of 2)
+        if (duration == 1 || duration == 2 || duration == 4 || duration == 8 || duration == 16 || duration == 32 ||
+            duration == 64 || duration == 128) {
+            *last_duration = duration;
+        } else {
+            duration = *last_duration; // Invalid duration, keep previous
+        }
+    }
+
+    // Parse dots
+    bool dotted = false;
+    if (*p == '.') {
+        dotted = true;
+        p++;
+    }
+
+    // Parse tuplets
+    int tuplet = 0;
+    if (*p == 't') {
+        tuplet = 3;
+        p++;
+    } else if (*p == 'q') {
+        tuplet = 5;
+        p++;
+    } else if (*p == 'x') {
+        tuplet = 6;
+        p++;
+    } else if (*p == 's') {
+        tuplet = 7;
+        p++;
+    } else if (*p == 'n') {
+        tuplet = 9;
+        p++;
+    }
+
+    // Apply to all notes
+    for (int i = 0; i < note_count; i++) {
+        notes[i].value = duration;
+        notes[i].dotted = dotted;
+        notes[i].tuplet = tuplet;
+    }
+
+    *input_pos = p;
+}
+
+// Parse chord: <c e g>4
+note_t* parse_chord(const char** input_pos, int* chord_size, int* last_duration) {
+    const char* p = *input_pos;
+    *chord_size = 0;
+
+    // Skip whitespace
+    while (*p && isspace(*p)) {
+        p++;
+    }
+
+    // Expect '<'
+    if (*p != '<') {
+        return NULL;
+    }
+    p++;
+
+    note_t* chord_notes = malloc(MAX_CHORD_SIZE * sizeof(note_t));
+    if (!chord_notes) {
+        return NULL;
+    }
+
+    // Parse notes until '>'
+    while (*p && *p != '>') {
+        if (*chord_size >= MAX_CHORD_SIZE) {
+            break; // Chord too large
+        }
+
+        note_t note = parse_note_without_duration(&p);
+        if (note.note_name == 0) {
+            break; // Failed to parse note
+        }
+
+        chord_notes[*chord_size] = note;
+        (*chord_size)++;
+
+        // Skip whitespace
+        while (*p && isspace(*p)) {
+            p++;
+        }
+    }
+
+    // Expect '>'
+    if (*p == '>') {
+        p++;
+    }
+
+    // Parse duration/modifiers that apply to whole chord
+    if (*chord_size > 0) {
+        parse_duration_and_modifiers(&p, last_duration, chord_notes, *chord_size);
+    }
+
+    *input_pos = p;
+    return chord_notes;
+}
+
 note_t parse_note(const char** input_pos, int* last_duration) {
-    note_t note = {0}; // Initialize to zeros
+    note_t note = {0}; // Initialize all fields to zeros, including chord_id
 
     if (!input_pos || !*input_pos || !last_duration) {
         return note; // Return empty note on error
@@ -155,27 +325,68 @@ note_array_t parse_music(const char* input) {
 
     const char* p = input;
     int last_duration = 4; // Default quarter note
+    int chord_counter = 1; // Start at 1, 0 means single note
 
     while (*p) {
-        note_t note = parse_note(&p, &last_duration);
-
-        // If note_name is 0, we've reached end or error
-        if (note.note_name == 0) {
-            break;
+        // Skip whitespace
+        while (*p && isspace(*p)) {
+            p++;
         }
 
-        // Resize array if needed
-        if (array.count >= array.capacity) {
-            array.capacity *= 2;
-            note_t* new_notes = realloc(array.notes, array.capacity * sizeof(note_t));
-            if (!new_notes) {
-                // Allocation failed - return what we have
+        if (!*p)
+            break;
+
+        // Check for chord syntax
+        if (*p == '<') {
+            int chord_size;
+            note_t* chord_notes = parse_chord(&p, &chord_size, &last_duration);
+
+            if (chord_notes && chord_size > 0) {
+                // Assign same chord ID to all notes in this chord
+                int current_chord_id = chord_counter++;
+
+                // Add all chord notes to array
+                for (int i = 0; i < chord_size; i++) {
+                    // Resize array if needed
+                    if (array.count >= array.capacity) {
+                        array.capacity *= 2;
+                        note_t* new_notes = realloc(array.notes, array.capacity * sizeof(note_t));
+                        if (!new_notes) {
+                            free(chord_notes);
+                            return array; // Return what we have
+                        }
+                        array.notes = new_notes;
+                    }
+
+                    chord_notes[i].chord_id = current_chord_id; // Mark as part of chord
+                    array.notes[array.count++] = chord_notes[i];
+                }
+                free(chord_notes);
+            }
+        } else {
+            // Parse single note
+            note_t note = parse_note(&p, &last_duration);
+
+            // If note_name is 0, we've reached end or error
+            if (note.note_name == 0) {
                 break;
             }
-            array.notes = new_notes;
-        }
 
-        array.notes[array.count++] = note;
+            note.chord_id = 0; // Mark as single note
+
+            // Resize array if needed
+            if (array.count >= array.capacity) {
+                array.capacity *= 2;
+                note_t* new_notes = realloc(array.notes, array.capacity * sizeof(note_t));
+                if (!new_notes) {
+                    // Allocation failed - return what we have
+                    break;
+                }
+                array.notes = new_notes;
+            }
+
+            array.notes[array.count++] = note;
+        }
     }
 
     return array;
@@ -232,6 +443,10 @@ void print_note(const note_t* note) {
         printf("x");
     } else if (note->tuplet == 7) {
         printf("s");
+    }
+    // Print chord ID for debugging
+    if (note->chord_id > 0) {
+        printf("[ch%d]", note->chord_id);
     }
 }
 
@@ -375,10 +590,78 @@ void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* d
     free(output_buffer);
 }
 
+// Standard chord volume adjustment functions
+void no_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size) {
+    // Do nothing
+}
+
+void linear_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size) {
+    float scale = 1.0f / chord_size;
+    for (int i = start_index; i < start_index + chord_size; i++) {
+        events[i].volume *= scale;
+    }
+}
+
+void sqrt_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size) {
+    float scale = 1.0f / sqrt(chord_size);
+    for (int i = start_index; i < start_index + chord_size; i++) {
+        events[i].volume *= scale;
+    }
+}
+
+void bass_boost_adjustment(sequencer_event_t* events, int start_index, int chord_size) {
+    // Find lowest frequency note
+    int bass_idx = start_index;
+    for (int i = start_index + 1; i < start_index + chord_size; i++) {
+        if (events[i].frequency < events[bass_idx].frequency) {
+            bass_idx = i;
+        }
+    }
+
+    // Apply different scaling
+    float bass_scale = 1.0f / sqrt(chord_size * 0.7f); // Less reduction for bass
+    float other_scale = 1.0f / sqrt(chord_size * 1.2f); // More reduction for others
+
+    for (int i = start_index; i < start_index + chord_size; i++) {
+        events[i].volume *= (i == bass_idx) ? bass_scale : other_scale;
+    }
+}
+
+// Adjust volumes for simultaneous events (chords)
+void adjust_chord_volumes(sequencer_event_t* events, int event_count, chord_volume_fn_t volume_fn) {
+    if (!volume_fn)
+        return; // No adjustment
+
+    for (int i = 0; i < event_count; i++) {
+        int simultaneous_count = 1;
+
+        // Count events that start at same time
+        for (int j = i + 1; j < event_count; j++) {
+            if (events[j].start_sample == events[i].start_sample) {
+                simultaneous_count++;
+            } else {
+                break; // Events are in chronological order
+            }
+        }
+
+        if (simultaneous_count > 1) {
+            // Let the function handle all the complexity
+            volume_fn(events, i, simultaneous_count);
+            i += simultaneous_count - 1; // Skip processed notes
+        }
+    }
+}
+
+// Helper function to check if two notes should be simultaneous (part of same chord)
+bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
+    // Notes are simultaneous only if they have the same non-zero chord_id
+    return (note1->chord_id > 0 && note1->chord_id == note2->chord_id);
+}
+
 // Convert note array to sequencer events with tuplet support
-// Now uses absolute frequency calculation
+// Now uses absolute frequency calculation and chord volume adjustment
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const instrument_t* instrument, float volume) {
+                                   const instrument_t* instrument, float volume, chord_volume_fn_t chord_volume_fn) {
     if (!notes || !notes->notes || notes->count == 0) {
         return NULL;
     }
@@ -423,7 +706,20 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
             .instrument = *instrument // Copy the instrument struct
         };
 
-        current_sample += duration_samples;
+        // Only advance time if the next note is NOT simultaneous (not part of same chord)
+        bool advance_time = true;
+        if (i + 1 < notes->count) {
+            advance_time = !notes_are_simultaneous(note, &notes->notes[i + 1]);
+        }
+
+        if (advance_time) {
+            current_sample += duration_samples;
+        }
+    }
+
+    // Pass 2: Adjust volumes for chords if function provided
+    if (chord_volume_fn) {
+        adjust_chord_volumes(events, notes->count, chord_volume_fn);
     }
 
     return events;
@@ -444,7 +740,8 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
 
     printf("\nConverting to sequencer events...\n");
 
-    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, &pluck_sine_instrument, 0.3f);
+    sequencer_event_t* events =
+        notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, &pluck_sine_instrument, 0.3f, sqrt_chord_adjustment);
 
     if (!events) {
         printf("Error: Failed to convert notes to events\n");
@@ -456,8 +753,8 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     for (int i = 0; i < notes.count; i++) {
         printf("Event %d: ", i);
         print_note(&notes.notes[i]);
-        printf(" -> %.1f Hz, start: %d, duration: %d samples\n", events[i].frequency, events[i].start_sample,
-               events[i].duration_samples);
+        printf(" -> %.1f Hz, start: %d, duration: %d samples, volume: %.3f\n", events[i].frequency, events[i].start_sample,
+               events[i].duration_samples, events[i].volume);
     }
 
     printf("Playing sequence with %d events using %s driver...\n", notes.count, driver->name);
@@ -471,6 +768,15 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     free_note_array(&notes);
 }
 
+// Test chord functionality
+void test_chords(const audio_driver_t* driver) {
+    const char* chord_progression = "c4 <c e g>2 f4 <f a c'>2 g4 <g b d'>1";
+    test_play_melody("Basic Chord Progression", chord_progression, 100, driver);
+
+    const char* arpeggiated = "c4 e g c' <c e g c'>1";
+    test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
+}
+
 // Wrapper function to keep backward compatibility
 void test_twinkle_twinkle(const audio_driver_t* driver) {
     const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
@@ -479,14 +785,14 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
 
 // Mary Had a Little Lamb
 void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
-    const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2"; //  e4 d c d e e e e d d e d c2
+    const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2";
     test_play_melody("Mary Had a Little Lamb", melody, 120, driver);
 }
 
 // Row Row Row Your Boat with correct 6/8 rhythm
 void test_row_row_row(const audio_driver_t* driver) {
     const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
-    test_play_melody("Row Row Row Your Boat", melody, 80, driver);
+    test_play_melody("Row Row Row Your Boat", melody, 120, driver);
 }
 
 // Test triplets with a simple example
@@ -550,7 +856,7 @@ void test_parser(void) {
         printf("\n");
     }
 
-    printf("\n=== String Parsing Tests ===\n");
+    printf("\n=== String Parsing Tests (including chords) ===\n");
     const char* string_tests[] = {
         "c g a f", // Simple sequence
         "c4 d e f g", // Duration inheritance
@@ -561,6 +867,10 @@ void test_parser(void) {
         "c4. d8 e4. f8 g2.", // Dotted notes (6/8 time pattern)
         "c8t d8t e8t f4 g4", // Triplets
         "c4q d4q e4q f4q g4q a2", // Quintuplets
+        "<c e g>4", // Basic chord
+        "<c e' g>2", // Chord with octave shifts
+        "c4 <c e g>2 d4", // Mixed single notes and chords
+        "<c, e g'>4. <f a c''>2", // Complex chords with dots
     };
 
     int num_string_tests = sizeof(string_tests) / sizeof(string_tests[0]);

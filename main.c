@@ -21,9 +21,16 @@ int main(void) {
     // Test the melody
     // const char* custom_melody = "c4 d e f g a b c'2 r4 c' b a g f e d c2";
     // test_play_melody("C Major Scale", custom_melody, 140, &pulseaudio_driver);
-    test_mary_had_a_little_lamb(&pulseaudio_driver);
+    // Test basic melodies
+    test_row_row_row(&pulseaudio_driver);
 
-    // Uncomment these for additional tests:
+    // Test new chord functionality!
+    // test_chords(&pulseaudio_driver);
+
+    // Uncomment any of these for additional tests:
+    // test_mary_had_a_little_lamb(&pulseaudio_driver);
+    // test_row_row_row(&pulseaudio_driver);
+    // test_triplets(&pulseaudio_driver);
     // test_parser();
     // test_frequencies();
 

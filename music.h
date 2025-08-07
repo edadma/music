@@ -12,6 +12,7 @@ typedef struct {
     int value; // 1, 2, 4, 8, 16, etc. (note value)
     bool dotted; // true if this is a dotted note (1.5x duration)
     int8_t tuplet; // 0 = normal, 3 = triplet, 5 = quintuplet, 6 = sextuplet, 7 = septuplet
+    int16_t chord_id; // 0 = single note, >0 = chord identifier (same ID = same chord)
 } note_t;
 
 // Temperament system
@@ -19,13 +20,6 @@ typedef struct {
     const char* name;
     double (*note_to_freq)(const note_t* note);
 } temperament_t;
-
-// Frequency conversion
-double note_to_frequency(const note_t* note, const temperament_t* temperament);
-double equal_temperament_freq(const note_t* note);
-
-// Standard temperaments
-extern const temperament_t equal_temperament;
 
 // Forward declare for the function pointer
 struct sequencer_event;
@@ -44,6 +38,9 @@ typedef struct sequencer_event {
     instrument_t instrument;
 } sequencer_event_t;
 
+// Chord volume adjustment function type
+typedef void (*chord_volume_fn_t)(sequencer_event_t* events, int start_index, int chord_size);
+
 // Dynamic array for notes
 typedef struct {
     note_t* notes;
@@ -61,6 +58,9 @@ typedef struct {
 
 // Parser functions
 note_t parse_note(const char** input_pos, int* last_duration);
+note_t parse_note_without_duration(const char** input_pos);
+void parse_duration_and_modifiers(const char** input_pos, int* last_duration, note_t* notes, int note_count);
+note_t* parse_chord(const char** input_pos, int* chord_size, int* last_duration);
 note_array_t parse_music(const char* input);
 void free_note_array(note_array_t* array);
 
@@ -71,11 +71,25 @@ bool is_dotted(const note_t* note);
 void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
+// Frequency conversion
+double note_to_frequency(const note_t* note, const temperament_t* temperament);
+double equal_temperament_freq(const note_t* note);
+
+// Standard temperaments
+extern const temperament_t equal_temperament;
+
 // Sequencer
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const instrument_t* instrument, float volume);
+                                   const instrument_t* instrument, float volume, chord_volume_fn_t chord_volume_fn);
+void adjust_chord_volumes(sequencer_event_t* events, int event_count, chord_volume_fn_t volume_fn);
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate);
 void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate);
+
+// Standard chord volume adjustment functions
+void no_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size);
+void linear_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size);
+void sqrt_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size);
+void bass_boost_adjustment(sequencer_event_t* events, int start_index, int chord_size);
 
 // Instruments
 extern const instrument_t pluck_sine_instrument;
@@ -83,6 +97,7 @@ extern const instrument_t pluck_sine_instrument;
 // Test function
 void test_parser(void);
 void test_frequencies(void);
+void test_chords(const audio_driver_t* driver);
 void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver);
 void test_twinkle_twinkle(const audio_driver_t* driver);
 void test_mary_had_a_little_lamb(const audio_driver_t* driver);
