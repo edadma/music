@@ -443,11 +443,11 @@ void test_parser(void) {
     }
 }
 
-void test_twinkle_twinkle(const audio_driver_t* driver) {
-    printf("=== Playing Twinkle Twinkle Little Star with Sequencer ===\n");
-    // The complete melody in your notation
-    const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
-    printf("Melody: %s\n\n", melody);
+// Generalized melody player function
+void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver) {
+    printf("=== Playing %s with Sequencer ===\n", song_name);
+    printf("Melody: %s\n", melody);
+    printf("Tempo: %d BPM\n\n", tempo_bpm);
 
     // Parse the melody
     note_array_t notes = parse_string(melody);
@@ -459,9 +459,8 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
 
     // Convert notes to sequencer events
     const int sample_rate = 44100;
-    const int tempo_bpm = 120;
 
-    printf("\nConverting to sequencer events at %d BPM...\n", tempo_bpm);
+    printf("\nConverting to sequencer events...\n");
 
     sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &middle_c, middle_c_freq, &equal_temperament,
                                                 &pluck_sine_instrument, 0.3f);
@@ -484,9 +483,21 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
     // Play the sequence using the sequencer and provided audio driver
     play_sequence(events, notes.count, (audio_driver_t*)driver, sample_rate);
 
-    printf("Melody complete!\n\n");
+    printf("%s complete!\n\n", song_name);
 
     // Cleanup
     free(events);
     free_note_array(&notes);
+}
+
+void test_twinkle_twinkle(const audio_driver_t* driver) {
+    const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
+    test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
+}
+
+// New test for Row Row Row Your Boat
+void test_row_row_row(const audio_driver_t* driver) {
+    // Traditional "Row Row Row Your Boat" melody
+    const char* melody = "c4 c c d e2 e4 d e f g1 c'4 c' c' g g g e e e c c c g4 f e d c1";
+    test_play_melody("Row Row Row Your Boat", melody, 90, driver);
 }

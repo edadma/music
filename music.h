@@ -81,6 +81,8 @@ extern const instrument_t pluck_sine_instrument;
 // Test function
 void test_parser(void);
 void test_frequencies(void);
+void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver);
 void test_twinkle_twinkle(const audio_driver_t* driver);
+void test_row_row_row(const audio_driver_t* driver);
 
 #endif // MUSIC_H
