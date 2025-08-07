@@ -20,7 +20,7 @@ note_t parse_note(const char** input_pos, int* last_duration) {
     }
 
     // Set default duration
-    note.duration = *last_duration;
+    note.value = *last_duration;
 
     const char* p = *input_pos;
 
@@ -81,7 +81,7 @@ parse_duration:
         // Validate duration (power of 2)
         if (duration == 1 || duration == 2 || duration == 4 || duration == 8 || duration == 16 || duration == 32 ||
             duration == 64 || duration == 128) {
-            note.duration = duration;
+            note.value = duration;
             *last_duration = duration; // Update last duration for next note
         } else {
             // Invalid duration - return empty note
@@ -159,7 +159,7 @@ void print_note(const note_t* note) {
     }
 
     if (is_rest(note)) {
-        printf("r%d", note->duration);
+        printf("r%d", note->value);
     } else {
         printf("%c", note->note_name);
 
@@ -179,7 +179,7 @@ void print_note(const note_t* note) {
             printf(",");
         }
 
-        printf("%d", note->duration);
+        printf("%d", note->value);
     }
 
     // Print dot if dotted
@@ -366,7 +366,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         // Quarter note (4) gets samples_per_beat samples
         // Half note (2) gets samples_per_beat * 2 samples
         // Eighth note (8) gets samples_per_beat / 2 samples, etc.
-        int duration_samples = (samples_per_beat * 4) / note->duration;
+        int duration_samples = (samples_per_beat * 4) / note->value;
 
         // Handle dotted notes (1.5x duration)
         if (note->dotted) {
@@ -399,7 +399,7 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     print_note_array(&notes);
 
     // Set up reference note and temperament
-    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .duration = 4};
+    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .value = 4};
     double middle_c_freq = 261.625565; // Middle C frequency
 
     // Convert notes to sequencer events
@@ -454,7 +454,7 @@ void test_frequencies(void) {
     printf("=== Frequency Conversion Tests ===\n");
 
     // Reference: middle C (c') = 261.625565 Hz
-    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .duration = 4};
+    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .value = 4};
     double middle_c_freq = 261.625565;
 
     const char* test_notes[] = {

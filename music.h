@@ -9,7 +9,7 @@ typedef struct {
     char note_name; // 'c', 'd', 'e', 'f', 'g', 'a', 'b', 'r' (lowercase)
     int8_t accidental; // -1 for flat(f), 0 for natural, +1 for sharp(s)
     int8_t octave_shift; // relative to reference: 0, +1, -1, +2, etc.
-    int duration; // 1, 2, 4, 8, 16, etc. (note value)
+    int value; // 1, 2, 4, 8, 16, etc. (note value)
     bool dotted; // true if this is a dotted note (1.5x duration)
 } note_t;
 
