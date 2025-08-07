@@ -61,7 +61,7 @@ typedef struct {
 
 // Parser functions
 note_t parse_note(const char** input_pos, int* last_duration);
-note_array_t parse_string(const char* input);
+note_array_t parse_music(const char* input);
 void free_note_array(note_array_t* array);
 
 // Utility functions

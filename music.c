@@ -138,7 +138,7 @@ parse_duration:
     return note;
 }
 
-note_array_t parse_string(const char* input) {
+note_array_t parse_music(const char* input) {
     note_array_t array = {0};
 
     if (!input) {
@@ -438,7 +438,7 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     printf("Tempo: %d BPM\n\n", tempo_bpm);
 
     // Parse the melody
-    note_array_t notes = parse_string(melody);
+    note_array_t notes = parse_music(melody);
     print_note_array(&notes);
 
     // Set up reference note and temperament
@@ -571,7 +571,7 @@ void test_parser(void) {
     int num_string_tests = sizeof(string_tests) / sizeof(string_tests[0]);
     for (int i = 0; i < num_string_tests; i++) {
         printf("Input: \"%s\"\n", string_tests[i]);
-        note_array_t array = parse_string(string_tests[i]);
+        note_array_t array = parse_music(string_tests[i]);
         printf("  ");
         print_note_array(&array);
         free_note_array(&array);
