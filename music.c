@@ -275,44 +275,42 @@ int note_name_to_semitone(char note_name) {
     }
 }
 
-// Calculate absolute semitone offset from reference note
-int calculate_semitone_offset(const note_t* note, const note_t* reference) {
-    if (is_rest(note) || is_rest(reference)) {
+// Calculate absolute semitone from octave 0
+int calculate_semitone(const note_t* note) {
+    if (is_rest(note)) {
         return 0; // Rests have no frequency
     }
 
     int note_semitone = note_name_to_semitone(note->note_name);
-    int ref_semitone = note_name_to_semitone(reference->note_name);
-
-    if (note_semitone < 0 || ref_semitone < 0) {
-        return 0; // Invalid note names
+    if (note_semitone < 0) {
+        return 0; // Invalid note name
     }
 
-    // Calculate total semitone difference
-    int semitone_diff = note_semitone - ref_semitone;
-    int octave_diff = note->octave_shift - reference->octave_shift;
-    int accidental_diff = note->accidental - reference->accidental;
-
-    return semitone_diff + (octave_diff * 12) + accidental_diff;
+    // Calculate absolute semitone: (octave_shift + 4) * 12 + base_semitone + accidental
+    // octave_shift 0 = octave 4 (middle C), octave_shift 1 = octave 5, etc.
+    return (note->octave_shift + 4) * 12 + note_semitone + note->accidental;
 }
 
-double equal_temperament_freq(const note_t* note, const note_t* reference, double reference_freq) {
+double equal_temperament_freq(const note_t* note) {
     if (is_rest(note)) {
         return 0.0; // Rests have no frequency
     }
 
-    int semitone_offset = calculate_semitone_offset(note, reference);
+    int semitone = calculate_semitone(note);
+
+    // C0 frequency (base frequency for octave 0)
+    const double c0_freq = 16.351597831287414;
 
     // Equal temperament: each semitone is 2^(1/12) ratio
-    return reference_freq * pow(2.0, semitone_offset / 12.0);
+    return c0_freq * pow(2.0, semitone / 12.0);
 }
 
-double note_to_frequency(const note_t* note, const note_t* reference, double reference_freq, const temperament_t* temperament) {
-    if (!note || !reference || !temperament || !temperament->note_to_freq) {
+double note_to_frequency(const note_t* note, const temperament_t* temperament) {
+    if (!note || !temperament || !temperament->note_to_freq) {
         return 0.0;
     }
 
-    return temperament->note_to_freq(note, reference, reference_freq);
+    return temperament->note_to_freq(note);
 }
 
 // Standard temperament definitions
@@ -378,9 +376,9 @@ void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* d
 }
 
 // Convert note array to sequencer events with tuplet support
-sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const note_t* reference,
-                                   double reference_freq, const temperament_t* temperament, const instrument_t* instrument,
-                                   float volume) {
+// Now uses absolute frequency calculation
+sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
+                                   const instrument_t* instrument, float volume) {
     if (!notes || !notes->notes || notes->count == 0) {
         return NULL;
     }
@@ -400,7 +398,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         const note_t* note = &notes->notes[i];
 
         // Calculate frequency (0.0 for rests)
-        double freq = is_rest(note) ? 0.0 : note_to_frequency(note, reference, reference_freq, temperament);
+        double freq = is_rest(note) ? 0.0 : note_to_frequency(note, temperament);
 
         // Calculate base duration in samples
         int duration_samples = (samples_per_beat * 4) / note->value;
@@ -441,17 +439,12 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     note_array_t notes = parse_music(melody);
     print_note_array(&notes);
 
-    // Set up reference note and temperament
-    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .value = 4};
-    double middle_c_freq = 261.625565; // Middle C frequency
-
     // Convert notes to sequencer events
     const int sample_rate = 44100;
 
     printf("\nConverting to sequencer events...\n");
 
-    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &middle_c, middle_c_freq, &equal_temperament,
-                                                &pluck_sine_instrument, 0.3f);
+    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, &pluck_sine_instrument, 0.3f);
 
     if (!events) {
         printf("Error: Failed to convert notes to events\n");
@@ -484,6 +477,12 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
     test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
 }
 
+// Mary Had a Little Lamb
+void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
+    const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2"; //  e4 d c d e e e e d d e d c2
+    test_play_melody("Mary Had a Little Lamb", melody, 120, driver);
+}
+
 // Row Row Row Your Boat with correct 6/8 rhythm
 void test_row_row_row(const audio_driver_t* driver) {
     const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
@@ -507,14 +506,10 @@ void test_crow_song(const audio_driver_t* driver) {
 void test_frequencies(void) {
     printf("=== Frequency Conversion Tests ===\n");
 
-    // Reference: middle C (c') = 261.625565 Hz
-    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .value = 4};
-    double middle_c_freq = 261.625565;
-
     const char* test_notes[] = {
-        "c",   "d",   "e",  "f",  "g", "a", "b", // Same octave as reference
-        "c'",  "d'",  "e'", // One octave up
-        "c,",  "g,", // One octave down
+        "c",   "d",   "e",  "f",  "g", "a", "b", // Octave 4 (middle C octave)
+        "c'",  "d'",  "e'", // Octave 5
+        "c,",  "g,", // Octave 3
         "cs",  "df",  "gs", "af", // Accidentals
         "c''", "a,,", // Multiple octaves
         "r4" // Rest
@@ -527,7 +522,7 @@ void test_frequencies(void) {
         int last_duration = 4;
         note_t note = parse_note(&p, &last_duration);
 
-        double freq = note_to_frequency(&note, &middle_c, middle_c_freq, &equal_temperament);
+        double freq = note_to_frequency(&note, &equal_temperament);
 
         printf("  ");
         print_note(&note);

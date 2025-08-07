@@ -21,7 +21,7 @@ int main(void) {
     // Test the melody
     // const char* custom_melody = "c4 d e f g a b c'2 r4 c' b a g f e d c2";
     // test_play_melody("C Major Scale", custom_melody, 140, &pulseaudio_driver);
-    test_twinkle_twinkle(&pulseaudio_driver);
+    test_mary_had_a_little_lamb(&pulseaudio_driver);
 
     // Uncomment these for additional tests:
     // test_parser();

@@ -17,12 +17,12 @@ typedef struct {
 // Temperament system
 typedef struct {
     const char* name;
-    double (*note_to_freq)(const note_t* note, const note_t* reference, double reference_freq);
+    double (*note_to_freq)(const note_t* note);
 } temperament_t;
 
 // Frequency conversion
-double note_to_frequency(const note_t* note, const note_t* reference, double reference_freq, const temperament_t* temperament);
-double equal_temperament_freq(const note_t* note, const note_t* reference, double reference_freq);
+double note_to_frequency(const note_t* note, const temperament_t* temperament);
+double equal_temperament_freq(const note_t* note);
 
 // Standard temperaments
 extern const temperament_t equal_temperament;
@@ -72,9 +72,8 @@ void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
 // Sequencer
-sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const note_t* reference,
-                                   double reference_freq, const temperament_t* temperament, const instrument_t* instrument,
-                                   float volume);
+sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
+                                   const instrument_t* instrument, float volume);
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate);
 void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate);
 
@@ -86,6 +85,7 @@ void test_parser(void);
 void test_frequencies(void);
 void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver);
 void test_twinkle_twinkle(const audio_driver_t* driver);
+void test_mary_had_a_little_lamb(const audio_driver_t* driver);
 void test_row_row_row(const audio_driver_t* driver);
 void test_crow_song(const audio_driver_t* driver);
 void test_triplets(const audio_driver_t* driver);
