@@ -10,6 +10,7 @@ typedef struct {
     int8_t accidental; // -1 for flat(f), 0 for natural, +1 for sharp(s)
     int8_t octave_shift; // relative to reference: 0, +1, -1, +2, etc.
     int duration; // 1, 2, 4, 8, 16, etc. (note value)
+    bool dotted; // true if this is a dotted note (1.5x duration)
 } note_t;
 
 // Temperament system
@@ -65,6 +66,7 @@ void free_note_array(note_array_t* array);
 // Utility functions
 bool is_valid_note_name(char c);
 bool is_rest(const note_t* note);
+bool is_dotted(const note_t* note);
 void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
