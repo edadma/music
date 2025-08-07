@@ -22,12 +22,19 @@ typedef struct {
 } temperament_t;
 
 // Forward declare for the function pointer
-struct sequencer_event;
+typedef struct sequencer_event sequencer_event_t;
+
+// Waveform function type - generates basic waveform (0.0 to 1.0 range)
+typedef float (*waveform_fn_t)(const sequencer_event_t* event, int sample_index, int sample_rate);
+
+// Envelope function type - shapes amplitude over time (0.0 to 1.0 range)
+typedef float (*envelope_fn_t)(const sequencer_event_t* event, int sample_index, int sample_rate);
 
 // Instrument
 typedef struct {
     const char* name;
-    float (*event_to_samples)(const struct sequencer_event* event, int sample_index, int sample_rate);
+    waveform_fn_t waveform;
+    envelope_fn_t envelope;
 } instrument_t;
 
 typedef struct sequencer_event {
@@ -91,8 +98,16 @@ void linear_chord_adjustment(sequencer_event_t* events, int start_index, int cho
 void sqrt_chord_adjustment(sequencer_event_t* events, int start_index, int chord_size);
 void bass_boost_adjustment(sequencer_event_t* events, int start_index, int chord_size);
 
+// Waveform generators
+float sine_wave(const sequencer_event_t* event, int sample_index, int sample_rate);
+float square_wave(const sequencer_event_t* event, int sample_index, int sample_rate);
+
+// Envelope generators
+float pluck_envelope(const sequencer_event_t* event, int sample_index, int sample_rate);
+
 // Instruments
 extern const instrument_t pluck_sine_instrument;
+extern const instrument_t pluck_square_instrument;
 
 // High-level playback functions
 void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...);

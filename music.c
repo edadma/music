@@ -544,30 +544,30 @@ int calculate_total_samples(sequencer_event_t* events, int event_count) {
     return max_end;
 }
 
-float pluck_sine_instrument_samples(const sequencer_event_t* event, int sample_index, int sample_rate) {
-    // Generate sine wave
-    float sine = sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
-
-    // Calculate time progress (0.0 to 1.0)
-    float t = (float)sample_index / event->duration_samples;
-
-    // Attack phase: very fast rise (first 5ms or 2% of note, whichever is smaller)
-    float attack_time = fmin(0.005f * sample_rate / event->duration_samples, 0.02f); // 5ms or 2%
-    float envelope;
-
-    if (t < attack_time) {
-        // Linear attack from 0 to 1 over attack_time
-        envelope = t / attack_time;
-    } else {
-        // Exponential decay after attack
-        float decay_t = (t - attack_time) / (1.0f - attack_time); // Normalize decay time
-        envelope = exp(-4.0f * decay_t); // Exponential decay
-    }
-
-    return event->volume * envelope * sine;
+float sine_wave(const sequencer_event_t* event, int sample_index, int sample_rate) {
+    return sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
 }
 
-const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .event_to_samples = pluck_sine_instrument_samples};
+float square_wave(const sequencer_event_t* event, int sample_index, int sample_rate) {
+    float phase = fmod(event->frequency * sample_index / sample_rate, 1.0);
+    return (phase < 0.5) ? 1.0f : -1.0f;
+}
+
+float pluck_envelope(const sequencer_event_t* event, int sample_index, int sample_rate) {
+    float t = (float)sample_index / event->duration_samples;
+    float attack_time = fmin(0.005f * sample_rate / event->duration_samples, 0.02f);
+
+    if (t < attack_time) {
+        return t / attack_time;
+    }
+
+    float decay_t = (t - attack_time) / (1.0f - attack_time);
+    return exp(-4.0f * decay_t);
+}
+
+const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .waveform = sine_wave, .envelope = pluck_envelope};
+
+const instrument_t pluck_square_instrument = {.name = "Pluck Square", .waveform = square_wave, .envelope = pluck_envelope};
 
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate) {
     memset(output_buffer, 0, buffer_size * sizeof(float));
@@ -581,7 +581,10 @@ void generate_samples(sequencer_event_t* events, int event_count, float* output_
                 break;
 
             // Let the instrument generate the sample
-            float sample = event->instrument.event_to_samples(event, i, sample_rate);
+            float waveform_sample = event->instrument.waveform(event, i, sample_rate);
+            float envelope_sample = event->instrument.envelope(event, i, sample_rate);
+            float sample = event->volume * envelope_sample * waveform_sample;
+
             output_buffer[output_index] += sample;
         }
     }
