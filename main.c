@@ -24,11 +24,11 @@ int main(void) {
     // test_twinkle_twinkle(&pulseaudio_driver);
 
     // Test new chord functionality!
-    test_chords(&pulseaudio_driver);
+    // test_chords(&pulseaudio_driver);
 
     // Test new multi-voice functionality!
-    // test_mary_had_a_little_lamb(&pulseaudio_driver);
-    //
+    test_mary_had_a_little_lamb(&pulseaudio_driver);
+
     // // Demonstrate the new play() API directly
     // play("Simple Canon", 140, &pulseaudio_driver,
     //      "c4 d e f g a b c'2", // Voice 1

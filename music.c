@@ -917,7 +917,7 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
 // Mary Had a Little Lamb - enhanced version with accompaniment
 void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
     // Simple single-voice version using new API
-    play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
+    // play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
     // Multi-voice version with bass accompaniment
     play("Mary Had a Little Lamb (With Bass)", 94, driver,
