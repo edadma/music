@@ -784,9 +784,29 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
 }
 
 // Mary Had a Little Lamb
+// void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
+//     const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2";
+//     test_play_melody("Mary Had a Little Lamb", melody, 120, driver);
+// }
+
+// Mary Had a Little Lamb - enhanced version with accompaniment
 void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
-    const char* melody = "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2";
-    test_play_melody("Mary Had a Little Lamb", melody, 120, driver);
+    // Simple melody version
+    const char* simple_melody = "e4 d c d e e e2 d4 d d2 e4 g g2"; //  e4 d c d e e e e d d e d c2
+    test_play_melody("Mary Had a Little Lamb (Simple)", simple_melody, 120, driver);
+
+    // Enhanced version with chord accompaniment (based on the sheet music)
+    // In F major: E D C D corresponds to scale degrees 7 6 5 6, so chords would be F, Bb, F progression
+    // const char* with_chords =
+    //     // "Mary had a little lamb"
+    //     "<e f a>4 <d f bf> <c f a> <d f bf> <e f a> <e f a> <e f a>2 "
+    //     // "little lamb, little lamb"
+    //     "<d f bf>4 <d f bf> <d f bf>2 <e g c'>4 <g c' e'> <g c' e'>2 "
+    //     // "Mary had a little lamb, its fleece was white as snow"
+    //     "<e f a>4 <d f bf> <c f a> <d f bf> <e f a> <e f a> <e f a> <e f a> "
+    //     "<d f bf> <d f bf> <e g c'> <d f bf> <c f a>1";
+    //
+    // test_play_melody("Mary Had a Little Lamb (With Chords)", with_chords, 94, driver);
 }
 
 // Row Row Row Your Boat with correct 6/8 rhythm
