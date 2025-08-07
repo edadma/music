@@ -68,11 +68,19 @@ bool is_rest(const note_t* note);
 void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
+// Sequencer
+sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const note_t* reference,
+                                   double reference_freq, const temperament_t* temperament, const instrument_t* instrument,
+                                   float volume);
+void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate);
+void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate);
+
 // Instruments
 extern const instrument_t pluck_sine_instrument;
 
 // Test function
 void test_parser(void);
 void test_frequencies(void);
+void test_twinkle_twinkle(const audio_driver_t* driver);
 
 #endif // MUSIC_H

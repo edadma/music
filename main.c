@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <tgmath.h>
 #include <time.h>
 
 #include "music.h"
@@ -14,8 +13,17 @@ void sleep_ms(int milliseconds) {
 }
 
 int main(void) {
-    play_tone_pulse(440.0, 1000, 0.5); // A4 for 1 second at half volume
+    // Test single tone first
+    // printf("Testing single A4 tone...\n");
+    // play_tone_pulse(440.0, 1000, 0.5); // A4 for 1 second at half volume
+    // sleep_ms(500);
+
+    // Test the melody
+    test_twinkle_twinkle(&pulseaudio_driver);
+
+    // Uncomment these for additional tests:
     // test_parser();
     // test_frequencies();
+
     return 0;
 }

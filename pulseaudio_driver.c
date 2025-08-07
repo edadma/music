@@ -9,7 +9,7 @@
 
 #include "music.h"
 
-pa_simple* pulseaudio_init(int rate, int channels, int* error) {
+void* pulseaudio_init(int rate, int channels, int* error) {
     // Audio format specification
     pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = rate};
 
@@ -24,7 +24,7 @@ pa_simple* pulseaudio_init(int rate, int channels, int* error) {
     return s;
 }
 
-int pulseaudio_play(pa_simple* s, float* samples, int sample_count) {
+int pulseaudio_play(void* s, float* samples, int sample_count) {
     int error;
 
     if (pa_simple_write(s, samples, sample_count * sizeof(float), &error))
@@ -35,7 +35,7 @@ int pulseaudio_play(pa_simple* s, float* samples, int sample_count) {
 }
 
 const audio_driver_t pulseaudio_driver = {
-    .name = "PulseAudio", .init = pulseaudio_init, .play = pulseaudio_play, .cleanup = pa_simple_free};
+    .name = "PulseAudio", .init = pulseaudio_init, .play = pulseaudio_play, .cleanup = (void (*)(void*))pa_simple_free};
 
 void play_tone_pulse(double frequency, int duration_ms, float volume) {
     const int sample_rate = 44100;

@@ -283,7 +283,7 @@ float pluck_sine_instrument_samples(const sequencer_event_t* event, int sample_i
 
 const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .event_to_samples = pluck_sine_instrument_samples};
 
-void generate_sequence(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate) {
+void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate) {
     memset(output_buffer, 0, buffer_size * sizeof(float));
 
     for (int e = 0; e < event_count; e++) {
@@ -309,7 +309,7 @@ void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* d
     void* context = driver->init(sample_rate, 1, &error);
 
     // Generate all audio
-    generate_sequence(events, event_count, output_buffer, total_samples, sample_rate);
+    generate_samples(events, event_count, output_buffer, total_samples, sample_rate);
 
     // Play it all at once
     driver->play(context, output_buffer, total_samples);
@@ -317,6 +317,59 @@ void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* d
     // Cleanup
     driver->cleanup(context);
     free(output_buffer);
+}
+
+// Convert note array to sequencer events
+// tempo_bpm: beats per minute (e.g., 120)
+// sample_rate: audio sample rate (e.g., 44100)
+// reference: reference note for frequency calculation
+// reference_freq: frequency of the reference note in Hz
+// temperament: temperament system to use
+// instrument: instrument to assign to all events
+// volume: volume level (0.0 to 1.0)
+sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const note_t* reference,
+                                   double reference_freq, const temperament_t* temperament, const instrument_t* instrument,
+                                   float volume) {
+    if (!notes || !notes->notes || notes->count == 0) {
+        return NULL;
+    }
+
+    sequencer_event_t* events = malloc(notes->count * sizeof(sequencer_event_t));
+    if (!events) {
+        return NULL;
+    }
+
+    // Calculate samples per beat (quarter note duration in samples)
+    // 60 seconds/minute ÷ tempo_bpm × sample_rate = samples per beat
+    int samples_per_beat = (60 * sample_rate) / tempo_bpm;
+
+    int current_sample = 0;
+
+    for (int i = 0; i < notes->count; i++) {
+        const note_t* note = &notes->notes[i];
+
+        // Calculate frequency (0.0 for rests)
+        double freq = is_rest(note) ? 0.0 : note_to_frequency(note, reference, reference_freq, temperament);
+
+        // Calculate duration in samples
+        // Quarter note (4) gets samples_per_beat samples
+        // Half note (2) gets samples_per_beat * 2 samples
+        // Eighth note (8) gets samples_per_beat / 2 samples, etc.
+        int duration_samples = (samples_per_beat * 4) / note->duration;
+
+        // Create the event
+        events[i] = (sequencer_event_t){
+            .frequency = freq,
+            .start_sample = current_sample,
+            .duration_samples = duration_samples,
+            .volume = volume,
+            .instrument = *instrument // Copy the instrument struct
+        };
+
+        current_sample += duration_samples;
+    }
+
+    return events;
 }
 
 void test_frequencies(void) {
@@ -388,4 +441,52 @@ void test_parser(void) {
         free_note_array(&array);
         printf("\n");
     }
+}
+
+void test_twinkle_twinkle(const audio_driver_t* driver) {
+    printf("=== Playing Twinkle Twinkle Little Star with Sequencer ===\n");
+    // The complete melody in your notation
+    const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
+    printf("Melody: %s\n\n", melody);
+
+    // Parse the melody
+    note_array_t notes = parse_string(melody);
+    print_note_array(&notes);
+
+    // Set up reference note and temperament
+    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .duration = 4};
+    double middle_c_freq = 261.625565; // Middle C frequency
+
+    // Convert notes to sequencer events
+    const int sample_rate = 44100;
+    const int tempo_bpm = 120;
+
+    printf("\nConverting to sequencer events at %d BPM...\n", tempo_bpm);
+
+    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &middle_c, middle_c_freq, &equal_temperament,
+                                                &pluck_sine_instrument, 0.3f);
+
+    if (!events) {
+        printf("Error: Failed to convert notes to events\n");
+        free_note_array(&notes);
+        return;
+    }
+
+    // Print the events for debugging
+    for (int i = 0; i < notes.count; i++) {
+        printf("Event %d: ", i);
+        print_note(&notes.notes[i]);
+        printf(" -> %.1f Hz, start: %d, duration: %d samples\n", events[i].frequency, events[i].start_sample,
+               events[i].duration_samples);
+    }
+
+    printf("Playing sequence with %d events using %s driver...\n", notes.count, driver->name);
+    // Play the sequence using the sequencer and provided audio driver
+    play_sequence(events, notes.count, (audio_driver_t*)driver, sample_rate);
+
+    printf("Melody complete!\n\n");
+
+    // Cleanup
+    free(events);
+    free_note_array(&notes);
 }
