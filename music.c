@@ -10,6 +10,8 @@ bool is_valid_note_name(char c) { return (c >= 'a' && c <= 'g') || (c == 'r'); }
 
 bool is_rest(const note_t* note) { return note && note->note_name == 'r'; }
 
+bool is_dotted(const note_t* note) { return note && note->dotted; }
+
 note_t parse_note(const char** input_pos, int* last_duration) {
     note_t note = {0}; // Initialize to zeros
 
@@ -88,7 +90,11 @@ parse_duration:
         }
     }
 
-    // TODO: Parse dots for dotted notes (later enhancement)
+    // Parse dots for dotted notes
+    if (*p == '.') {
+        p++;
+        note.dotted = true;
+    }
 
     *input_pos = p; // Update input position
     return note;
@@ -174,6 +180,11 @@ void print_note(const note_t* note) {
         }
 
         printf("%d", note->duration);
+    }
+
+    // Print dot if dotted
+    if (note->dotted) {
+        printf(".");
     }
 }
 
@@ -357,6 +368,11 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         // Eighth note (8) gets samples_per_beat / 2 samples, etc.
         int duration_samples = (samples_per_beat * 4) / note->duration;
 
+        // Handle dotted notes (1.5x duration)
+        if (note->dotted) {
+            duration_samples = (duration_samples * 3) / 2;
+        }
+
         // Create the event
         events[i] = (sequencer_event_t){
             .frequency = freq,
@@ -370,77 +386,6 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
     }
 
     return events;
-}
-
-void test_frequencies(void) {
-    printf("=== Frequency Conversion Tests ===\n");
-
-    // Reference: middle C (c') = 261.625565 Hz
-    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .duration = 4};
-    double middle_c_freq = 261.625565;
-
-    const char* test_notes[] = {
-        "c",   "d",   "e",  "f",  "g", "a", "b", // Same octave as reference
-        "c'",  "d'",  "e'", // One octave up
-        "c,",  "g,", // One octave down
-        "cs",  "df",  "gs", "af", // Accidentals
-        "c''", "a,,", // Multiple octaves
-        "r4" // Rest
-    };
-
-    int num_freq_tests = sizeof(test_notes) / sizeof(test_notes[0]);
-
-    for (int i = 0; i < num_freq_tests; i++) {
-        const char* p = test_notes[i];
-        int last_duration = 4;
-        note_t note = parse_note(&p, &last_duration);
-
-        double freq = note_to_frequency(&note, &middle_c, middle_c_freq, &equal_temperament);
-
-        printf("  ");
-        print_note(&note);
-        printf(" -> %.2f Hz\n", freq);
-    }
-
-    printf("\n");
-}
-
-void test_parser(void) {
-    printf("Testing music parser:\n\n");
-
-    // Test individual notes
-    printf("=== Individual Note Tests ===\n");
-    const char* note_tests[] = {"c4", "gs2", "bf'", "r8", "a''4", "d,2", "ess16", "bff8"};
-
-    int num_note_tests = sizeof(note_tests) / sizeof(note_tests[0]);
-    for (int i = 0; i < num_note_tests; i++) {
-        printf("Input: \"%s\" -> ", note_tests[i]);
-        const char* p = note_tests[i];
-        int last_duration = 4;
-        note_t note = parse_note(&p, &last_duration);
-        print_note(&note);
-        printf("\n");
-    }
-
-    printf("\n=== String Parsing Tests ===\n");
-    const char* string_tests[] = {
-        "c g a f", // Simple sequence
-        "c4 d e f g", // Duration inheritance
-        "c4 c g' g a a g2", // Twinkle Twinkle first line
-        "f4 f e e d d c2", // Twinkle Twinkle second line
-        "r4 c d r2 e", // With rests
-        "c'' d, ess bf' r8 g4", // Mixed complex notes
-    };
-
-    int num_string_tests = sizeof(string_tests) / sizeof(string_tests[0]);
-    for (int i = 0; i < num_string_tests; i++) {
-        printf("Input: \"%s\"\n", string_tests[i]);
-        note_array_t array = parse_string(string_tests[i]);
-        printf("  ");
-        print_note_array(&array);
-        free_note_array(&array);
-        printf("\n");
-    }
 }
 
 // Generalized melody player function
@@ -490,6 +435,7 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
     free_note_array(&notes);
 }
 
+// Wrapper function to keep backward compatibility
 void test_twinkle_twinkle(const audio_driver_t* driver) {
     const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
     test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
@@ -497,7 +443,81 @@ void test_twinkle_twinkle(const audio_driver_t* driver) {
 
 // New test for Row Row Row Your Boat
 void test_row_row_row(const audio_driver_t* driver) {
-    // Traditional "Row Row Row Your Boat" melody
-    const char* melody = "c4 c c d e2 e4 d e f g1 c'4 c' c' g g g e e e c c c g4 f e d c1";
-    test_play_melody("Row Row Row Your Boat", melody, 90, driver);
+    // Traditional "Row Row Row Your Boat" melody in 6/8 time
+    // Row row row your boat, gently down the stream
+    // Merrily merrily merrily merrily, life is but a dream
+    const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
+    test_play_melody("Row Row Row Your Boat", melody, 120, driver);
+}
+
+void test_frequencies(void) {
+    printf("=== Frequency Conversion Tests ===\n");
+
+    // Reference: middle C (c') = 261.625565 Hz
+    note_t middle_c = {.note_name = 'c', .octave_shift = 0, .duration = 4};
+    double middle_c_freq = 261.625565;
+
+    const char* test_notes[] = {
+        "c",   "d",   "e",  "f",  "g", "a", "b", // Same octave as reference
+        "c'",  "d'",  "e'", // One octave up
+        "c,",  "g,", // One octave down
+        "cs",  "df",  "gs", "af", // Accidentals
+        "c''", "a,,", // Multiple octaves
+        "r4" // Rest
+    };
+
+    int num_freq_tests = sizeof(test_notes) / sizeof(test_notes[0]);
+
+    for (int i = 0; i < num_freq_tests; i++) {
+        const char* p = test_notes[i];
+        int last_duration = 4;
+        note_t note = parse_note(&p, &last_duration);
+
+        double freq = note_to_frequency(&note, &middle_c, middle_c_freq, &equal_temperament);
+
+        printf("  ");
+        print_note(&note);
+        printf(" -> %.2f Hz\n", freq);
+    }
+
+    printf("\n");
+}
+
+void test_parser(void) {
+    printf("Testing music parser:\n\n");
+
+    // Test individual notes
+    printf("=== Individual Note Tests ===\n");
+    const char* note_tests[] = {"c4", "gs2", "bf'", "r8", "a''4", "d,2", "ess16", "bff8", "c4.", "g2.", "r4."};
+
+    int num_note_tests = sizeof(note_tests) / sizeof(note_tests[0]);
+    for (int i = 0; i < num_note_tests; i++) {
+        printf("Input: \"%s\" -> ", note_tests[i]);
+        const char* p = note_tests[i];
+        int last_duration = 4;
+        note_t note = parse_note(&p, &last_duration);
+        print_note(&note);
+        printf("\n");
+    }
+
+    printf("\n=== String Parsing Tests ===\n");
+    const char* string_tests[] = {
+        "c g a f", // Simple sequence
+        "c4 d e f g", // Duration inheritance
+        "c4 c g' g a a g2", // Twinkle Twinkle first line
+        "f4 f e e d d c2", // Twinkle Twinkle second line
+        "r4 c d r2 e", // With rests
+        "c'' d, ess bf' r8 g4", // Mixed complex notes
+        "c4. d8 e4. f8 g2.", // Dotted notes (6/8 time pattern)
+    };
+
+    int num_string_tests = sizeof(string_tests) / sizeof(string_tests[0]);
+    for (int i = 0; i < num_string_tests; i++) {
+        printf("Input: \"%s\"\n", string_tests[i]);
+        note_array_t array = parse_string(string_tests[i]);
+        printf("  ");
+        print_note_array(&array);
+        free_note_array(&array);
+        printf("\n");
+    }
 }
