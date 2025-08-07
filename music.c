@@ -22,7 +22,8 @@ float get_tuplet_ratio(int tuplet) {
     case 3:
         return 2.0f / 3.0f; // triplet (3 in time of 2)
     case 5:
-        return 4.0f / 5.0f; // quintuplet (5 in time of 4)    case 6:
+        return 4.0f / 5.0f; // quintuplet (5 in time of 4)
+    case 6:
         return 4.0f / 6.0f; // sextuplet (6 in time of 4)
     case 7:
         return 4.0f / 7.0f; // septuplet (7 in time of 4)
@@ -127,6 +128,9 @@ parse_duration:
     } else if (*p == 's') {
         p++;
         note.tuplet = 7; // septuplet
+    } else if (*p == 'n') {
+        p++;
+        note.tuplet = 9; // nonuplet
     }
 
     *input_pos = p; // Update input position
