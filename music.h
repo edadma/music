@@ -66,6 +66,18 @@ typedef struct {
     const char* (*strerror)(int error);
 } audio_driver_t;
 
+typedef struct {
+    float frequency_ratio; // 1.0=fundamental, 3.0=3rd harmonic, etc.
+    float amplitude; // relative amplitude
+} harmonic_t;
+
+typedef struct {
+    const char* name;
+    harmonic_t* harmonics;
+    int harmonic_count;
+    int max_musical_harmonics;
+} timbre_t;
+
 // Parser functions
 note_t parse_note(const char** input_pos, int* last_duration);
 note_t parse_note_without_duration(const char** input_pos);

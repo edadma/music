@@ -588,6 +588,34 @@ float square_wave(const sequencer_event_t* event, int sample_index, int sample_r
     return result * 0.4f;
 }
 
+// Square wave: odd harmonics with 1/n amplitude
+static harmonic_t square_harmonics[] = {{1.0f, 1.0f},     {3.0f, 1.0f / 3}, {5.0f, 1.0f / 5},
+                                        {7.0f, 1.0f / 7}, {9.0f, 1.0f / 9}, {11.0f, 1.0f / 11}};
+
+// Sawtooth: all harmonics with 1/n amplitude
+static harmonic_t saw_harmonics[] = {{1.0f, 1.0f},     {2.0f, 1.0f / 2}, {3.0f, 1.0f / 3},
+                                     {4.0f, 1.0f / 4}, {5.0f, 1.0f / 5}, {6.0f, 1.0f / 6}};
+
+// Organ-like: selected harmonics
+static harmonic_t organ_harmonics[] = {{1.0f, 1.0f}, {2.0f, 0.8f}, {3.0f, 0.6f}, {4.0f, 0.4f}, {6.0f, 0.3f}};
+
+float additive_wave(const sequencer_event_t* event, int sample_index, int sample_rate, const timbre_t* spec) {
+    float t = 2.0 * M_PI * event->frequency * sample_index / sample_rate;
+    float result = 0.0f;
+
+    float nyquist = sample_rate / 2.0f;
+
+    for (int i = 0; i < spec->harmonic_count; i++) {
+        float harmonic_freq = event->frequency * spec->harmonics[i].frequency_ratio;
+        if (harmonic_freq >= nyquist)
+            break; // Skip harmonics above Nyquist
+
+        result += spec->harmonics[i].amplitude * sin(spec->harmonics[i].frequency_ratio * t);
+    }
+
+    return result * 0.4f;
+}
+
 float pluck_envelope(const sequencer_event_t* event, int sample_index, int sample_rate) {
     float t = (float)sample_index / event->duration_samples;
     float attack_time = fmin(0.005f * sample_rate / event->duration_samples, 0.02f);
