@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+typedef struct instrument instrument_t;
+
 // Note representation
 typedef struct {
     char note_name; // 'c', 'd', 'e', 'f', 'g', 'a', 'b', 'r' (lowercase)
@@ -13,6 +15,7 @@ typedef struct {
     bool dotted; // true if this is a dotted note (1.5x duration)
     int8_t tuplet; // 0 = normal, 3 = triplet, 5 = quintuplet, 6 = sextuplet, 7 = septuplet
     int16_t chord_id; // 0 = single note, >0 = chord identifier (same ID = same chord)
+    const instrument_t* instrument; // <- New field
 } note_t;
 
 // Temperament system
@@ -31,7 +34,7 @@ typedef float (*waveform_fn_t)(const sequencer_event_t* event, int sample_index,
 typedef float (*envelope_fn_t)(const sequencer_event_t* event, int sample_index, int sample_rate);
 
 // Instrument
-typedef struct {
+typedef struct instrument {
     const char* name;
     waveform_fn_t waveform;
     envelope_fn_t envelope;
@@ -87,7 +90,7 @@ extern const temperament_t equal_temperament;
 
 // Sequencer
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const instrument_t* instrument, float volume, chord_volume_fn_t chord_volume_fn);
+                                   float volume, chord_volume_fn_t chord_volume_fn);
 void adjust_chord_volumes(sequencer_event_t* events, int event_count, chord_volume_fn_t volume_fn);
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate);
 void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate);
@@ -108,6 +111,8 @@ float pluck_envelope(const sequencer_event_t* event, int sample_index, int sampl
 // Instruments
 extern const instrument_t pluck_sine_instrument;
 extern const instrument_t pluck_square_instrument;
+
+const instrument_t* lookup_instrument(const char* name);
 
 // High-level playback functions
 void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...);

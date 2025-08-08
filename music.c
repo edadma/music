@@ -312,6 +312,7 @@ parse_duration:
 
 note_array_t parse_music(const char* input) {
     note_array_t array = {0};
+    const instrument_t* current_instrument = &pluck_sine_instrument; // Default
 
     if (!input) {
         return array;
@@ -338,6 +339,23 @@ note_array_t parse_music(const char* input) {
         if (!*p)
             break;
 
+        // Check for instrument change [name]
+        if (*p == '[') {
+            p++;
+            char instrument_name[32] = {0};
+            int name_idx = 0;
+            while (*p && *p != ']' && name_idx < 31) {
+                instrument_name[name_idx++] = *p++;
+            }
+
+            if (*p == ']') {
+                p++;
+                instrument_name[name_idx] = '\0';
+                current_instrument = lookup_instrument(instrument_name);
+            }
+            continue; // Skip to next iteration
+        }
+
         // Check for chord syntax
         if (*p == '<') {
             int chord_size;
@@ -361,6 +379,7 @@ note_array_t parse_music(const char* input) {
                     }
 
                     chord_notes[i].chord_id = current_chord_id; // Mark as part of chord
+                    array.notes[array.count].instrument = current_instrument;
                     array.notes[array.count++] = chord_notes[i];
                 }
                 free(chord_notes);
@@ -374,6 +393,7 @@ note_array_t parse_music(const char* input) {
                 break;
             }
 
+            note.instrument = current_instrument;
             note.chord_id = 0; // Mark as single note
 
             // Resize array if needed
@@ -549,8 +569,23 @@ float sine_wave(const sequencer_event_t* event, int sample_index, int sample_rat
 }
 
 float square_wave(const sequencer_event_t* event, int sample_index, int sample_rate) {
-    float phase = fmod(event->frequency * sample_index / sample_rate, 1.0);
-    return (phase < 0.5) ? 1.0f : -1.0f;
+    float t = 2.0 * M_PI * event->frequency * sample_index / sample_rate;
+    float result = 0.0f;
+
+    // Calculate maximum safe harmonic
+    float nyquist = sample_rate / 2.0f;
+    int technical_max = (int)(nyquist / event->frequency);
+    int musical_max = 11;
+    int max_harmonic = (technical_max < musical_max) ? technical_max : musical_max;
+
+    if (max_harmonic % 2 == 0)
+        max_harmonic--;
+
+    for (int h = 1; h <= max_harmonic; h += 2) {
+        result += sin(h * t) / h;
+    }
+
+    return result * 0.4f;
 }
 
 float pluck_envelope(const sequencer_event_t* event, int sample_index, int sample_rate) {
@@ -566,8 +601,23 @@ float pluck_envelope(const sequencer_event_t* event, int sample_index, int sampl
 }
 
 const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .waveform = sine_wave, .envelope = pluck_envelope};
-
 const instrument_t pluck_square_instrument = {.name = "Pluck Square", .waveform = square_wave, .envelope = pluck_envelope};
+
+// Global instrument registry
+static const instrument_t* available_instruments[] = {
+    &pluck_sine_instrument, &pluck_square_instrument,
+    NULL // Sentinel
+};
+
+const instrument_t* lookup_instrument(const char* name) {
+    for (int i = 0; available_instruments[i] != NULL; i++) {
+        if (strcasecmp(name, available_instruments[i]->name) == 0) {
+            return available_instruments[i];
+        }
+    }
+
+    return &pluck_sine_instrument; // Default fallback
+}
 
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate) {
     memset(output_buffer, 0, buffer_size * sizeof(float));
@@ -679,7 +729,7 @@ bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
 // Convert note array to sequencer events with tuplet support
 // Now uses absolute frequency calculation and chord volume adjustment
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const instrument_t* instrument, float volume, chord_volume_fn_t chord_volume_fn) {
+                                   float volume, chord_volume_fn_t chord_volume_fn) {
     if (!notes || !notes->notes || notes->count == 0) {
         return NULL;
     }
@@ -721,7 +771,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
             .start_sample = current_sample,
             .duration_samples = duration_samples,
             .volume = volume,
-            .instrument = *instrument // Copy the instrument struct
+            .instrument = *note->instrument // Copy the instrument struct
         };
 
         // Only advance time if the next note is NOT simultaneous (not part of same chord)
@@ -822,8 +872,8 @@ void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
         }
 
         // Convert to events
-        sequencer_event_t* voice_events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament,
-                                                          &pluck_sine_instrument, 0.3f, sqrt_chord_adjustment);
+        sequencer_event_t* voice_events =
+            notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, 0.3f, sqrt_chord_adjustment);
 
         if (v == 0) {
             // First voice - just copy
@@ -874,8 +924,7 @@ void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, 
 
     printf("\nConverting to sequencer events...\n");
 
-    sequencer_event_t* events =
-        notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, &pluck_sine_instrument, 0.3f, sqrt_chord_adjustment);
+    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, 0.3f, sqrt_chord_adjustment);
 
     if (!events) {
         printf("Error: Failed to convert notes to events\n");
@@ -937,7 +986,7 @@ void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
 
     // Multi-voice version with bass accompaniment
     play("Mary Had a Little Lamb (With Bass)", 120, driver,
-         "e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
+         "[pluck square] e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
          "c,2   g,,2   c,2   g,,2  d,2   g,,2  c,2   g,,2  c,2 g,,2 c,2  g,,2 d,2  g,,2 c,1", // bass
          NULL);
 }
