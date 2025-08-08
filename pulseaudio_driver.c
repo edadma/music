@@ -12,9 +12,14 @@
 void* pulseaudio_init(int rate, int channels, int* error) {
     // Audio format specification
     pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = rate};
+    pa_buffer_attr buffer_attr = {.maxlength = (uint32_t)-1,
+                                  .tlength = rate / 100, // 10ms target latency
+                                  .prebuf = (uint32_t)-1,
+                                  .minreq = (uint32_t)-1,
+                                  .fragsize = (uint32_t)-1};
 
     // Create PulseAudio connection
-    pa_simple* s = pa_simple_new(NULL, "Music Player", PA_STREAM_PLAYBACK, NULL, "music", &ss, NULL, NULL, error);
+    pa_simple* s = pa_simple_new(NULL, "Music Player", PA_STREAM_PLAYBACK, NULL, "music", &ss, NULL, &buffer_attr, error);
 
     if (!s) {
         printf("PulseAudio error: %s\n", pa_strerror(*error));
