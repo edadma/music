@@ -78,19 +78,6 @@ int get_key_accidental(char note_name, const key_signature_t* key) {
     return key->accidentals[index];
 }
 
-// Helper function to apply key signature to a note
-note_t apply_key_signature(const note_t* note, const key_signature_t* key) {
-    note_t modified_note = *note; // Copy the original note
-
-    if (!is_rest(note) && key) {
-        // Add key signature accidental to the note's explicit accidental
-        int key_accidental = get_key_accidental(note->note_name, key);
-        modified_note.accidental += key_accidental;
-    }
-
-    return modified_note;
-}
-
 bool is_valid_note_name(char c) { return (c >= 'a' && c <= 'g') || (c == 'r'); }
 
 bool is_rest(const note_t* note) { return note && note->note_name == 'r'; }
@@ -610,30 +597,32 @@ int calculate_semitone(const note_t* note) {
     return (note->octave_shift + 4) * 12 + note_semitone + note->accidental;
 }
 
-double equal_temperament_freq(const note_t* note) {
+double equal_temperament_freq(const note_t* note, const key_signature_t* key) {
     if (is_rest(note)) {
         return 0.0; // Rests have no frequency
     }
 
     int semitone = calculate_semitone(note);
+    int key_accidental = key ? get_key_accidental(note->note_name, key) : 0;
+    int key_adjusted_semitone = key_accidental + semitone;
 
     // C0 frequency (base frequency for octave 0)
     const double c0_freq = 16.351597831287414;
 
     // Equal temperament: each semitone is 2^(1/12) ratio
-    return c0_freq * pow(2.0, semitone / 12.0);
+    return c0_freq * pow(2.0, key_adjusted_semitone / 12.0);
 }
 
-double note_to_frequency(const note_t* note, const temperament_t* temperament) {
-    if (!note || !temperament || !temperament->note_to_freq) {
+double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key) {
+    if (!note || !temperament || !temperament->compute_frequency) {
         return 0.0;
     }
 
-    return temperament->note_to_freq(note);
+    return temperament->compute_frequency(note, key);
 }
 
 // Standard temperament definitions
-const temperament_t equal_temperament = {.name = "Equal Temperament", .note_to_freq = equal_temperament_freq};
+const temperament_t equal_temperament = {.name = "Equal Temperament", .compute_frequency = equal_temperament_freq};
 
 int calculate_total_samples(sequencer_event_t* events, int event_count) {
     int max_end = 0;
@@ -860,8 +849,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         if (is_rest(note)) {
             freq = 0.0;
         } else {
-            note_t key_adjusted_note = apply_key_signature(note, key);
-            freq = note_to_frequency(&key_adjusted_note, temperament);
+            freq = note_to_frequency(note, temperament, key);
         }
 
         // Calculate duration (same as before)
@@ -1026,7 +1014,7 @@ void test_chords(const audio_driver_t* driver) {
 
 // Wrapper function to keep backward compatibility
 void play_twinkle_twinkle(const audio_driver_t* driver) {
-    play("Twinkle Twinkle Little Star", 120, &c_major, driver, "c4 c g g a a g2 f4 f e e d d c2");
+    play("Twinkle Twinkle Little Star", 120, &a_major, driver, "c4 c g g a a g2 f4 f e e d d c2");
 }
 
 // Mary Had a Little Lamb - enhanced version with accompaniment
@@ -1072,7 +1060,7 @@ void test_frequencies(void) {
         int last_duration = 4;
         note_t note = parse_note(&p, &last_duration);
 
-        double freq = note_to_frequency(&note, &equal_temperament);
+        double freq = note_to_frequency(&note, &equal_temperament, &c_major);
 
         printf("  ");
         print_note(&note);

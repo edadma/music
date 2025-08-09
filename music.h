@@ -18,10 +18,16 @@ typedef struct {
     const instrument_t* instrument; // <- New field
 } note_t;
 
+// Key signature definition
+typedef struct {
+    const char* name;
+    int accidentals[7]; // Accidentals for C, D, E, F, G, A, B (-1=flat, 0=natural, +1=sharp)
+} key_signature_t;
+
 // Temperament system
 typedef struct {
     const char* name;
-    double (*note_to_freq)(const note_t* note);
+    double (*compute_frequency)(const note_t* note, const key_signature_t* key);
 } temperament_t;
 
 // Forward declare for the function pointer
@@ -78,12 +84,6 @@ typedef struct {
     int max_musical_harmonics;
 } timbre_t;
 
-// Key signature definition
-typedef struct {
-    const char* name;
-    int accidentals[7]; // Accidentals for C, D, E, F, G, A, B (-1=flat, 0=natural, +1=sharp)
-} key_signature_t;
-
 // Standard key signatures (add these declarations to music.h)
 extern const key_signature_t c_major;
 extern const key_signature_t g_major;
@@ -118,9 +118,6 @@ extern const key_signature_t bf_minor; // Same as Db major
 extern const key_signature_t ef_minor; // Same as Gb major
 extern const key_signature_t af_minor; // Same as Cb major
 
-// Updated function signatures (add these to music.h)
-note_t apply_key_signature(const note_t* note, const key_signature_t* key);
-
 // Parser functions
 note_t parse_note(const char** input_pos, int* last_duration);
 note_t parse_note_without_duration(const char** input_pos);
@@ -137,8 +134,8 @@ void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
 // Frequency conversion
-double note_to_frequency(const note_t* note, const temperament_t* temperament);
-double equal_temperament_freq(const note_t* note);
+double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key);
+double equal_temperament_freq(const note_t* note, const key_signature_t* key);
 
 // Standard temperaments
 extern const temperament_t equal_temperament;
