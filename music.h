@@ -169,7 +169,7 @@ const instrument_t* lookup_instrument(const char* name);
 
 // High-level playback functions
 void play(const char* name, int tempo_bpm, const key_signature_t* written_key, const key_signature_t* play_key,
-          const audio_driver_t* driver, ...);
+          const temperament_t* temperament, const audio_driver_t* driver, ...);
 sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, sequencer_event_t* events2, int count2,
                                       int* total_count);
 

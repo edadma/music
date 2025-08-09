@@ -888,7 +888,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
 
         if (note->tuplet > 0) {
             float tuplet_ratio = get_tuplet_ratio(note->tuplet);
-            duration_samples = (int)(duration_samples * tuplet_ratio);
+            duration_samples = (int)((float)duration_samples * tuplet_ratio);
         }
 
         events[i] = (sequencer_event_t){.frequency = freq,
@@ -986,7 +986,7 @@ int calculate_key_transposition(const key_signature_t* from_key, const key_signa
 }
 
 void play(const char* name, int tempo_bpm, const key_signature_t* written_key, const key_signature_t* play_key,
-          const audio_driver_t* driver, ...) {
+          const temperament_t* temperament, const audio_driver_t* driver, ...) {
     // Calculate transposition
     int transposition = calculate_key_transposition(written_key, play_key);
 
@@ -1034,8 +1034,8 @@ void play(const char* name, int tempo_bpm, const key_signature_t* written_key, c
         }
 
         // Use key-aware function with proper temperament parameter
-        sequencer_event_t* voice_events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, written_key,
-                                                          transposition, 0.3f, sqrt_chord_adjustment);
+        sequencer_event_t* voice_events =
+            notes_to_events(&notes, tempo_bpm, sample_rate, temperament, written_key, transposition, 0.3f, sqrt_chord_adjustment);
 
         if (v == 0) {
             all_events = voice_events;
@@ -1064,29 +1064,17 @@ void play(const char* name, int tempo_bpm, const key_signature_t* written_key, c
 
 // Test chord functionality
 void test_chords(const audio_driver_t* driver) {
-    // const char* chord_progression = "c4 <c e g>2 f4 <f a c'>2 g4 <g b d'>1";
-    // test_play_melody("Basic Chord Progression", chord_progression, 100, driver);
-    //
+    const char* chord_progression = "c4 <c e g>2 f4 <f a c'>2 g4 <g b d'>1";
+    play("Basic Chord Progression", 100, &c_major, &c_major, &equal_temperament, driver, chord_progression, NULL);
+
     // const char* arpeggiated = "c4 e g c' <c e g c'>1";
     // test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
-
-    // Demonstrate multi-voice polyphony with new play() function
-    play("Two-Voice Counterpoint", 120, &c_major, &c_major, driver,
-         "c4 d e f g a b c'2", // Voice 1: ascending scale
-         "c2 f2 e2 g2 c'1", // Voice 2: slower harmony
-         NULL);
-
-    // Three-voice example
-    play("Three-Voice Harmony", 100, &c_major, &c_major, driver,
-         "c4 d e f g f e d c2", // Melody
-         "c2 f2 g2 c2", // Bass
-         "e2 a2 g2 e2", // Middle voice
-         NULL);
 }
 
 // Wrapper function to keep backward compatibility
 void play_twinkle_twinkle(const audio_driver_t* driver) {
-    play("Twinkle Twinkle Little Star", 120, &c_major, &c_major, driver, "c4 c g g a a g2 f4 f e e d d c2", NULL);
+    play("Twinkle Twinkle Little Star", 120, &c_major, &c_major, &equal_temperament, driver, "c4 c g g a a g2 f4 f e e d d c2",
+         NULL);
 }
 
 // Mary Had a Little Lamb - enhanced version with accompaniment
@@ -1095,7 +1083,7 @@ void play_mary_had_a_little_lamb(const audio_driver_t* driver) {
     // play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
     // Multi-voice version with bass accompaniment
-    play("Mary Had a Little Lamb (With Bass)", 120, &c_major, &c_major, driver,
+    play("Mary Had a Little Lamb (With Bass)", 120, &c_major, &c_major, &equal_temperament, driver,
          "e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
          "c,2   g,,2   c,2   g,,2  d,2   g,,2  c,2   g,,2  c,2 g,,2 c,2  g,,2 d,2  g,,2 c,1", // bass
          NULL);
@@ -1103,14 +1091,14 @@ void play_mary_had_a_little_lamb(const audio_driver_t* driver) {
 
 // Row Row Row Your Boat with correct 6/8 rhythm
 void play_row_row_row(const audio_driver_t* driver) {
-    play("Row Row Row Your Boat", 120, &c_major, &c_major, driver,
+    play("Row Row Row Your Boat", 120, &c_major, &c_major, &equal_temperament, driver,
          "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.", NULL);
 }
 
 // Test triplets with a simple example
 void play_triplets(const audio_driver_t* driver) {
     const char* melody = "c4 d4 e8t f8t g8t a2 g4 f4 e8t d8t c8t d2";
-    play("Triplet Test", 120, &c_major, &c_major, driver, melody, NULL);
+    play("Triplet Test", 120, &c_major, &c_major, &equal_temperament, driver, melody, NULL);
 }
 
 void test_frequencies(void) {

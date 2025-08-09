@@ -31,7 +31,7 @@ int main(void) {
     // test_chords(&pulseaudio_driver);
 
     // Test new multi-voice functionality!
-    play_mary_had_a_little_lamb(&pulseaudio_driver);
+    test_chords(&pulseaudio_driver);
 
     // // Demonstrate the new play() API directly
     // play("Simple Canon", 140, &pulseaudio_driver,
