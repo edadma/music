@@ -26,27 +26,22 @@ void* pulseaudio_init(int rate, int channels, int* error) {
         return NULL;
     }
 
+    int warmup_samples = 44100 / 4; // 250ms at 44.1kHz
+    float* silence = calloc(warmup_samples, sizeof(float));
+
+    if (pa_simple_write(s, silence, warmup_samples * sizeof(float), &error)) {
+        free(silence);
+        return error;
+    }
+    if (pa_simple_drain(s, &error))
+        return error;
+    free(silence);
+
     return s;
 }
 
 int pulseaudio_play(void* s, float* samples, int sample_count) {
-    static bool first_play = true;
     int error;
-
-    if (first_play) {
-        // Add 100ms of silence at the start to let PulseAudio warm up
-        int warmup_samples = 44100 / 5; // 200ms at 44.1kHz
-        float* silence = calloc(warmup_samples, sizeof(float));
-
-        if (pa_simple_write(s, silence, warmup_samples * sizeof(float), &error)) {
-            free(silence);
-            return error;
-        }
-        if (pa_simple_drain(s, &error))
-            return error;
-        free(silence);
-        first_play = false;
-    }
 
     if (pa_simple_write(s, samples, sample_count * sizeof(float), &error))
         return error;
