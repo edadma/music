@@ -9,6 +9,88 @@
 
 #define MAX_CHORD_SIZE 8
 
+// Key signature definitions
+const key_signature_t c_major = {"C major", {0, 0, 0, 0, 0, 0, 0}};
+const key_signature_t g_major = {"G major", {0, 0, 0, 1, 0, 0, 0}}; // F#
+const key_signature_t d_major = {"D major", {1, 0, 0, 1, 0, 0, 0}}; // F#, C#
+const key_signature_t a_major = {"A major", {1, 0, 0, 1, 1, 0, 0}}; // F#, C#, G#
+const key_signature_t e_major = {"E major", {1, 1, 0, 1, 1, 0, 0}}; // F#, C#, G#, D#
+const key_signature_t b_major = {"B major", {1, 1, 0, 1, 1, 1, 0}}; // F#, C#, G#, D#, A#
+const key_signature_t fs_major = {"F# major", {1, 1, 1, 1, 1, 1, 0}}; // F#, C#, G#, D#, A#, E#
+const key_signature_t cs_major = {"C# major", {1, 1, 1, 1, 1, 1, 1}}; // All sharp
+
+const key_signature_t f_major = {"F major", {0, 0, 0, 0, 0, 0, -1}}; // Bb
+const key_signature_t bf_major = {"Bb major", {0, 0, -1, 0, 0, 0, -1}}; // Bb, Eb
+const key_signature_t ef_major = {"Eb major", {0, 0, -1, 0, 0, -1, -1}}; // Bb, Eb, Ab
+const key_signature_t af_major = {"Ab major", {0, -1, -1, 0, 0, -1, -1}}; // Bb, Eb, Ab, Db
+const key_signature_t df_major = {"Db major", {0, -1, -1, 0, -1, -1, -1}}; // Bb, Eb, Ab, Db, Gb
+const key_signature_t gf_major = {"Gb major", {-1, -1, -1, 0, -1, -1, -1}}; // Bb, Eb, Ab, Db, Gb, Cb
+const key_signature_t cf_major = {"Cb major", {-1, -1, -1, -1, -1, -1, -1}}; // All flat
+
+// Minor keys (same accidentals as their relative majors)
+const key_signature_t a_minor = {"A minor", {0, 0, 0, 0, 0, 0, 0}}; // Same as C major
+const key_signature_t e_minor = {"E minor", {0, 0, 0, 1, 0, 0, 0}}; // Same as G major
+const key_signature_t b_minor = {"B minor", {1, 0, 0, 1, 0, 0, 0}}; // Same as D major
+const key_signature_t fs_minor = {"F# minor", {1, 0, 0, 1, 1, 0, 0}}; // Same as A major
+const key_signature_t cs_minor = {"C# minor", {1, 1, 0, 1, 1, 0, 0}}; // Same as E major
+const key_signature_t gs_minor = {"G# minor", {1, 1, 0, 1, 1, 1, 0}}; // Same as B major
+const key_signature_t ds_minor = {"D# minor", {1, 1, 1, 1, 1, 1, 0}}; // Same as F# major
+const key_signature_t as_minor = {"A# minor", {1, 1, 1, 1, 1, 1, 1}}; // Same as C# major
+const key_signature_t d_minor = {"D minor", {0, 0, 0, 0, 0, 0, -1}}; // Same as F major
+const key_signature_t g_minor = {"G minor", {0, 0, -1, 0, 0, 0, -1}}; // Same as Bb major
+const key_signature_t c_minor = {"C minor", {0, 0, -1, 0, 0, -1, -1}}; // Same as Eb major
+const key_signature_t f_minor = {"F minor", {0, -1, -1, 0, 0, -1, -1}}; // Same as Ab major
+const key_signature_t bf_minor = {"Bb minor", {0, -1, -1, 0, -1, -1, -1}}; // Same as Db major
+const key_signature_t ef_minor = {"Eb minor", {-1, -1, -1, 0, -1, -1, -1}}; // Same as Gb major
+const key_signature_t af_minor = {"Ab minor", {-1, -1, -1, -1, -1, -1, -1}}; // Same as Cb major
+
+// Helper function to get key signature accidental for a note name
+int get_key_accidental(char note_name, const key_signature_t* key) {
+    if (!key)
+        return 0;
+    int index;
+    switch (note_name) {
+    case 'c':
+        index = 0;
+        break;
+    case 'd':
+        index = 1;
+        break;
+    case 'e':
+        index = 2;
+        break;
+    case 'f':
+        index = 3;
+        break;
+    case 'g':
+        index = 4;
+        break;
+    case 'a':
+        index = 5;
+        break;
+    case 'b':
+        index = 6;
+        break;
+    default:
+        return 0; // Rest or invalid
+    }
+
+    return key->accidentals[index];
+}
+
+// Helper function to apply key signature to a note
+note_t apply_key_signature(const note_t* note, const key_signature_t* key) {
+    note_t modified_note = *note; // Copy the original note
+
+    if (!is_rest(note) && key) {
+        // Add key signature accidental to the note's explicit accidental
+        int key_accidental = get_key_accidental(note->note_name, key);
+        modified_note.accidental += key_accidental;
+    }
+
+    return modified_note;
+}
+
 bool is_valid_note_name(char c) { return (c >= 'a' && c <= 'g') || (c == 'r'); }
 
 bool is_rest(const note_t* note) { return note && note->note_name == 'r'; }
@@ -757,7 +839,7 @@ bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
 // Convert note array to sequencer events with tuplet support
 // Now uses absolute frequency calculation and chord volume adjustment
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   float volume, chord_volume_fn_t chord_volume_fn) {
+                                   const key_signature_t* key, float volume, chord_volume_fn_t chord_volume_fn) {
     if (!notes || !notes->notes || notes->count == 0) {
         return NULL;
     }
@@ -767,42 +849,39 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         return NULL;
     }
 
-    // Calculate samples per beat (quarter note duration in samples)
-    // 60 seconds/minute ÷ tempo_bpm × sample_rate = samples per beat
     int samples_per_beat = (60 * sample_rate) / tempo_bpm;
-
     int current_sample = 0;
 
     for (int i = 0; i < notes->count; i++) {
         const note_t* note = &notes->notes[i];
 
-        // Calculate frequency (0.0 for rests)
-        double freq = is_rest(note) ? 0.0 : note_to_frequency(note, temperament);
+        // Apply key signature and calculate frequency using provided temperament
+        double freq;
+        if (is_rest(note)) {
+            freq = 0.0;
+        } else {
+            note_t key_adjusted_note = apply_key_signature(note, key);
+            freq = note_to_frequency(&key_adjusted_note, temperament);
+        }
 
-        // Calculate base duration in samples
+        // Calculate duration (same as before)
         int duration_samples = (samples_per_beat * 4) / note->value;
 
-        // Handle dotted notes (1.5x duration)
         if (note->dotted) {
             duration_samples = (duration_samples * 3) / 2;
         }
 
-        // Handle tuplets (adjust timing based on tuplet ratio)
         if (note->tuplet > 0) {
             float tuplet_ratio = get_tuplet_ratio(note->tuplet);
             duration_samples = (int)(duration_samples * tuplet_ratio);
         }
 
-        // Create the event
-        events[i] = (sequencer_event_t){
-            .frequency = freq,
-            .start_sample = current_sample,
-            .duration_samples = duration_samples,
-            .volume = volume,
-            .instrument = *note->instrument // Copy the instrument struct
-        };
+        events[i] = (sequencer_event_t){.frequency = freq,
+                                        .start_sample = current_sample,
+                                        .duration_samples = duration_samples,
+                                        .volume = volume,
+                                        .instrument = *note->instrument};
 
-        // Only advance time if the next note is NOT simultaneous (not part of same chord)
         bool advance_time = true;
         if (i + 1 < notes->count) {
             advance_time = !notes_are_simultaneous(note, &notes->notes[i + 1]);
@@ -813,7 +892,6 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         }
     }
 
-    // Pass 2: Adjust volumes for chords if function provided
     if (chord_volume_fn) {
         adjust_chord_volumes(events, notes->count, chord_volume_fn);
     }
@@ -856,15 +934,14 @@ sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, se
 }
 
 // High-level play function - takes multiple voice strings as var args
-void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
-    printf("=== Playing %s ===\n", name);
+void play(const char* name, int tempo_bpm, const key_signature_t* key, const audio_driver_t* driver, ...) {
+    printf("=== Playing %s in %s ===\n", name, key ? key->name : "C major");
     printf("Tempo: %d BPM\n", tempo_bpm);
 
     va_list args;
     va_start(args, driver);
 
-    // Count voices and collect music strings
-    const char* voices[16]; // Max 16 voices
+    const char* voices[16];
     int voice_count = 0;
     const char* music_string;
 
@@ -884,14 +961,11 @@ void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
     }
     printf("\n");
 
-    // Parse all voices and convert to events
     sequencer_event_t* all_events = NULL;
     int total_events = 0;
-
     const int sample_rate = 44100;
 
     for (int v = 0; v < voice_count; v++) {
-        // Parse this voice
         note_array_t notes = parse_music(voices[v]);
         if (notes.count == 0) {
             printf("Warning: Voice %d is empty\n", v + 1);
@@ -899,22 +973,17 @@ void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
             continue;
         }
 
-        // Convert to events
+        // Use key-aware function with proper temperament parameter
         sequencer_event_t* voice_events =
-            notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, 0.3f, sqrt_chord_adjustment);
+            notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, key, 0.3f, sqrt_chord_adjustment);
 
         if (v == 0) {
-            // First voice - just copy
             all_events = voice_events;
             total_events = notes.count;
         } else {
-            // Merge with existing events
             sequencer_event_t* merged = merge_event_arrays(all_events, total_events, voice_events, notes.count, &total_events);
-
-            // Free old arrays
             free(all_events);
             free(voice_events);
-
             all_events = merged;
         }
 
@@ -927,56 +996,10 @@ void play(const char* name, int tempo_bpm, const audio_driver_t* driver, ...) {
     }
 
     printf("Playing %d total events...\n", total_events);
-
-    // Play the merged sequence
     play_sequence(all_events, total_events, (audio_driver_t*)driver, sample_rate);
-
     printf("%s complete!\n\n", name);
 
-    // Cleanup
     free(all_events);
-}
-
-// Generalized melody player function
-void test_play_melody(const char* song_name, const char* melody, int tempo_bpm, const audio_driver_t* driver) {
-    printf("=== Playing %s with Sequencer ===\n", song_name);
-    printf("Melody: %s\n", melody);
-    printf("Tempo: %d BPM\n\n", tempo_bpm);
-
-    // Parse the melody
-    note_array_t notes = parse_music(melody);
-    print_note_array(&notes);
-
-    // Convert notes to sequencer events
-    const int sample_rate = 44100;
-
-    printf("\nConverting to sequencer events...\n");
-
-    sequencer_event_t* events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, 0.3f, sqrt_chord_adjustment);
-
-    if (!events) {
-        printf("Error: Failed to convert notes to events\n");
-        free_note_array(&notes);
-        return;
-    }
-
-    // Print the events for debugging
-    for (int i = 0; i < notes.count; i++) {
-        printf("Event %d: ", i);
-        print_note(&notes.notes[i]);
-        printf(" -> %.1f Hz, start: %d, duration: %d samples, volume: %.3f\n", events[i].frequency, events[i].start_sample,
-               events[i].duration_samples, events[i].volume);
-    }
-
-    printf("Playing sequence with %d events using %s driver...\n", notes.count, driver->name);
-    // Play the sequence using the sequencer and provided audio driver
-    play_sequence(events, notes.count, (audio_driver_t*)driver, sample_rate);
-
-    printf("%s complete!\n\n", song_name);
-
-    // Cleanup
-    free(events);
-    free_note_array(&notes);
 }
 
 // Test chord functionality
@@ -988,13 +1011,13 @@ void test_chords(const audio_driver_t* driver) {
     // test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
 
     // Demonstrate multi-voice polyphony with new play() function
-    play("Two-Voice Counterpoint", 120, driver,
+    play("Two-Voice Counterpoint", 120, &c_major, driver,
          "c4 d e f g a b c'2", // Voice 1: ascending scale
          "c2 f2 e2 g2 c'1", // Voice 2: slower harmony
          NULL);
 
     // Three-voice example
-    play("Three-Voice Harmony", 100, driver,
+    play("Three-Voice Harmony", 100, &c_major, driver,
          "c4 d e f g f e d c2", // Melody
          "c2 f2 g2 c2", // Bass
          "e2 a2 g2 e2", // Middle voice
@@ -1002,41 +1025,32 @@ void test_chords(const audio_driver_t* driver) {
 }
 
 // Wrapper function to keep backward compatibility
-void test_twinkle_twinkle(const audio_driver_t* driver) {
-    const char* melody = "c4 c g g a a g2 f4 f e e d d c2";
-    test_play_melody("Twinkle Twinkle Little Star", melody, 120, driver);
+void play_twinkle_twinkle(const audio_driver_t* driver) {
+    play("Twinkle Twinkle Little Star", 120, &c_major, driver, "c4 c g g a a g2 f4 f e e d d c2");
 }
 
 // Mary Had a Little Lamb - enhanced version with accompaniment
-void test_mary_had_a_little_lamb(const audio_driver_t* driver) {
+void play_mary_had_a_little_lamb(const audio_driver_t* driver) {
     // Simple single-voice version using new API
     // play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
     // Multi-voice version with bass accompaniment
-    play("Mary Had a Little Lamb (With Bass)", 120, driver,
-         "[pluck square] e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
+    play("Mary Had a Little Lamb (With Bass)", 120, &c_major, driver,
+         "e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
          "c,2   g,,2   c,2   g,,2  d,2   g,,2  c,2   g,,2  c,2 g,,2 c,2  g,,2 d,2  g,,2 c,1", // bass
          NULL);
 }
 
 // Row Row Row Your Boat with correct 6/8 rhythm
-void test_row_row_row(const audio_driver_t* driver) {
-    const char* melody = "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.";
-    test_play_melody("Row Row Row Your Boat", melody, 80, driver);
+void play_row_row_row(const audio_driver_t* driver) {
+    play("Row Row Row Your Boat", 120, &c_major, driver,
+         "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.");
 }
 
 // Test triplets with a simple example
-void test_triplets(const audio_driver_t* driver) {
+void play_triplets(const audio_driver_t* driver) {
     const char* melody = "c4 d4 e8t f8t g8t a2 g4 f4 e8t d8t c8t d2";
-    test_play_melody("Triplet Test", melody, 120, driver);
-}
-
-// Test Crow Song with actual triplets
-void test_crow_song(const audio_driver_t* driver) {
-    // Folk song "Crow Song" with triplets (simplified version)
-    // This would need the actual transcription from the sheet music
-    const char* melody = "c4. f8 f4. g8";
-    test_play_melody("Crow Song (with triplets)", melody, 110, driver);
+    play("Triplet Test", 120, &c_major, driver);
 }
 
 void test_frequencies(void) {
