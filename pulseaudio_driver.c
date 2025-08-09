@@ -13,9 +13,9 @@ void* pulseaudio_init(int rate, int channels, int* error) {
     // Audio format specification
     pa_sample_spec ss = {.format = PA_SAMPLE_FLOAT32LE, .channels = channels, .rate = rate};
     pa_buffer_attr buffer_attr = {.maxlength = (uint32_t)-1,
-                                  .tlength = rate / 100, // 10ms target latency
-                                  .prebuf = (uint32_t)-1,
-                                  .minreq = (uint32_t)-1,
+                                  .tlength = rate / 50, // 20ms target latency
+                                  .prebuf = rate / 200, // 5ms prebuffer (was -1)
+                                  .minreq = rate / 200, // 5ms minimum request (was -1)
                                   .fragsize = (uint32_t)-1};
 
     // Create PulseAudio connection
@@ -30,7 +30,23 @@ void* pulseaudio_init(int rate, int channels, int* error) {
 }
 
 int pulseaudio_play(void* s, float* samples, int sample_count) {
+    static bool first_play = true;
     int error;
+
+    if (first_play) {
+        // Add 100ms of silence at the start to let PulseAudio warm up
+        int warmup_samples = 44100 / 5; // 200ms at 44.1kHz
+        float* silence = calloc(warmup_samples, sizeof(float));
+
+        if (pa_simple_write(s, silence, warmup_samples * sizeof(float), &error)) {
+            free(silence);
+            return error;
+        }
+        if (pa_simple_drain(s, &error))
+            return error;
+        free(silence);
+        first_play = false;
+    }
 
     if (pa_simple_write(s, samples, sample_count * sizeof(float), &error))
         return error;
