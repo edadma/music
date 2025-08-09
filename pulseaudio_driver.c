@@ -55,12 +55,11 @@ const audio_driver_t pulseaudio_driver = {
 
 void play_tone_pulse(double frequency, int duration_ms, float volume) {
     const int sample_rate = 44100;
-    const int samples_per_ms = sample_rate / 1000;
-    const int total_samples = duration_ms * samples_per_ms;
+    const int total_samples = duration_ms * sample_rate / 1000;
 
     // Create PulseAudio connection
     int error;
-    void* context = pulseaudio_driver.init(sample_rate, 1, &error);
+    void* context = pulseaudio_init(sample_rate, 1, &error);
 
     // Generate audio samples
     float* samples = malloc(total_samples * sizeof(float));
@@ -76,9 +75,9 @@ void play_tone_pulse(double frequency, int duration_ms, float volume) {
     }
 
     // Play the audio
-    pulseaudio_driver.play(context, samples, total_samples);
+    pulseaudio_play(context, samples, total_samples);
 
     // Cleanup
     free(samples);
-    pulseaudio_driver.cleanup(context);
+    pa_simple_free(context);
 }
