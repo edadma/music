@@ -27,7 +27,7 @@ typedef struct {
 // Temperament system
 typedef struct {
     const char* name;
-    double (*compute_frequency)(const note_t* note, const key_signature_t* key);
+    double (*compute_frequency)(int absolute_semitone);
 } temperament_t;
 
 // Forward declare for the function pointer
@@ -134,15 +134,16 @@ void print_note(const note_t* note);
 void print_note_array(const note_array_t* array);
 
 // Frequency conversion
-double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key);
-double equal_temperament_freq(const note_t* note, const key_signature_t* key);
+double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key, int transposition);
+double equal_temperament_freq(int absolute_semitone);
 
 // Standard temperaments
 extern const temperament_t equal_temperament;
 
 // Sequencer
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const key_signature_t* key, float volume, chord_volume_fn_t chord_volume_fn);
+                                   const key_signature_t* key, int transposition, float volume,
+                                   chord_volume_fn_t chord_volume_fn);
 void adjust_chord_volumes(sequencer_event_t* events, int event_count, chord_volume_fn_t volume_fn);
 void generate_samples(sequencer_event_t* events, int event_count, float* output_buffer, int buffer_size, int sample_rate);
 void play_sequence(sequencer_event_t* events, int event_count, audio_driver_t* driver, int sample_rate);
@@ -167,7 +168,8 @@ extern const instrument_t pluck_square_instrument;
 const instrument_t* lookup_instrument(const char* name);
 
 // High-level playback functions
-void play(const char* name, int tempo_bpm, const key_signature_t* key, const audio_driver_t* driver, ...);
+void play(const char* name, int tempo_bpm, const key_signature_t* written_key, const key_signature_t* play_key,
+          const audio_driver_t* driver, ...);
 sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, sequencer_event_t* events2, int count2,
                                       int* total_count);
 

@@ -597,68 +597,53 @@ int calculate_semitone(const note_t* note) {
     return (note->octave_shift + 4) * 12 + note_semitone + note->accidental;
 }
 
-double equal_temperament_freq(const note_t* note, const key_signature_t* key) {
+int note_to_absolute_semitone(const note_t* note, const key_signature_t* key, int transposition) {
     if (is_rest(note)) {
-        return 0.0; // Rests have no frequency
+        return -1; // Special value for rests
     }
 
-    int semitone = calculate_semitone(note);
+    int note_semitone = note_name_to_semitone(note->note_name);
+    if (note_semitone < 0) {
+        return -1; // Invalid note
+    }
+
+    // Apply key signature + explicit accidental + transposition
     int key_accidental = key ? get_key_accidental(note->note_name, key) : 0;
-    int key_adjusted_semitone = key_accidental + semitone;
+    int total_accidental = key_accidental + note->accidental;
 
-    // C0 frequency (base frequency for octave 0)
-    const double c0_freq = 16.351597831287414;
-
-    // Equal temperament: each semitone is 2^(1/12) ratio
-    return c0_freq * pow(2.0, key_adjusted_semitone / 12.0);
+    return (note->octave_shift + 4) * 12 + note_semitone + total_accidental + transposition;
 }
 
-double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key) {
+double equal_temperament_freq(int absolute_semitone) {
+    const double c0_freq = 16.351597831287414;
+    return c0_freq * pow(2.0, absolute_semitone / 12.0);
+}
+
+double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key, int transposition) {
     if (!note || !temperament || !temperament->compute_frequency) {
         return 0.0;
     }
 
-    return temperament->compute_frequency(note, key);
+    int absolute_semitone = note_to_absolute_semitone(note, key, transposition);
+    if (absolute_semitone < 0) {
+        return 0.0; // Rest or invalid note
+    }
+
+    return temperament->compute_frequency(absolute_semitone);
 }
 
 // Standard temperament definitions
 const temperament_t equal_temperament = {.name = "Equal Temperament", .compute_frequency = equal_temperament_freq};
 
-static const double werckmeister3_ratios[12] = {
-    1.0000000, // C
-    1.0535686, // C#
-    1.1174011, // D
-    1.1852459, // D#
-    1.2533331, // E
-    1.3333333, // F
-    1.4062500, // F#
-    1.4953488, // G
-    1.5802469, // G#
-    1.6735537, // A
-    1.7777778, // A#
-    1.8877551 // B
-};
+double werckmeister3_freq(int absolute_semitone) {
+    static const double ratios[12] = {1.0000000, 1.0535686, 1.1174011, 1.1852459, 1.2533331, 1.3333333,
+                                      1.4062500, 1.4953488, 1.5802469, 1.6735537, 1.7777778, 1.8877551};
 
-double werckmeister3_freq(const note_t* note, const key_signature_t* key) {
-    if (is_rest(note)) {
-        return 0.0;
-    }
+    int chromatic_pos = absolute_semitone % 12;
+    int octave = absolute_semitone / 12;
 
-    // Apply key signature
-    int key_accidental = key ? get_key_accidental(note->note_name, key) : 0;
-    int total_accidental = key_accidental + note->accidental;
-
-    // Calculate chromatic semitone (0-11)
-    int note_semitone = note_name_to_semitone(note->note_name);
-    int chromatic_index = (note_semitone + total_accidental + 12) % 12;
-
-    // Get ratio and apply octave
-    double ratio = werckmeister3_ratios[chromatic_index];
-    int octave = note->octave_shift + 4;
-
-    // C4 = 261.626 Hz in werckmeister III
     const double c4_freq = 261.626;
-    return c4_freq * ratio * pow(2.0, octave - 4);
+    return c4_freq * ratios[chromatic_pos] * pow(2.0, octave - 4);
 }
 
 // Add to temperament registry
@@ -868,7 +853,8 @@ bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
 // Convert note array to sequencer events with tuplet support
 // Now uses absolute frequency calculation and chord volume adjustment
 sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int sample_rate, const temperament_t* temperament,
-                                   const key_signature_t* key, float volume, chord_volume_fn_t chord_volume_fn) {
+                                   const key_signature_t* key, int transposition, float volume,
+                                   chord_volume_fn_t chord_volume_fn) {
     if (!notes || !notes->notes || notes->count == 0) {
         return NULL;
     }
@@ -889,7 +875,7 @@ sequencer_event_t* notes_to_events(const note_array_t* notes, int tempo_bpm, int
         if (is_rest(note)) {
             freq = 0.0;
         } else {
-            freq = note_to_frequency(note, temperament, key);
+            freq = note_to_frequency(note, temperament, key, transposition);
         }
 
         // Calculate duration (same as before)
@@ -961,10 +947,55 @@ sequencer_event_t* merge_event_arrays(sequencer_event_t* events1, int count1, se
     return merged;
 }
 
-// High-level play function - takes multiple voice strings as var args
-void play(const char* name, int tempo_bpm, const key_signature_t* key, const audio_driver_t* driver, ...) {
-    printf("=== Playing %s in %s ===\n", name, key ? key->name : "C major");
-    printf("Tempo: %d BPM\n", tempo_bpm);
+int get_key_tonic_semitone(const key_signature_t* key) {
+    // Map key names to tonic semitones (could also add a field to key_signature_t)
+    if (key == &c_major || key == &a_minor)
+        return 0; // C
+    if (key == &g_major || key == &e_minor)
+        return 7; // G
+    if (key == &d_major || key == &b_minor)
+        return 2; // D
+    if (key == &a_major || key == &fs_minor)
+        return 9; // A
+    if (key == &e_major || key == &cs_minor)
+        return 4; // E
+    if (key == &b_major || key == &gs_minor)
+        return 11; // B
+    if (key == &fs_major || key == &ds_minor)
+        return 6; // F#
+    if (key == &f_major || key == &d_minor)
+        return 5; // F
+    if (key == &bf_major || key == &g_minor)
+        return 10; // Bb
+    if (key == &ef_major || key == &c_minor)
+        return 3; // Eb
+    if (key == &af_major || key == &f_minor)
+        return 8; // Ab
+    if (key == &df_major || key == &bf_minor)
+        return 1; // Db
+    if (key == &gf_major || key == &ef_minor)
+        return 6; // Gb (enharmonic with F#)
+    return 0; // Default to C
+}
+
+int calculate_key_transposition(const key_signature_t* from_key, const key_signature_t* to_key) {
+    int from_tonic = get_key_tonic_semitone(from_key);
+    int to_tonic = get_key_tonic_semitone(to_key);
+    return to_tonic - from_tonic;
+}
+
+void play(const char* name, int tempo_bpm, const key_signature_t* written_key, const key_signature_t* play_key,
+          const audio_driver_t* driver, ...) {
+    // Calculate transposition
+    int transposition = calculate_key_transposition(written_key, play_key);
+
+    printf("=== Playing %s", name);
+    if (written_key != play_key) {
+        printf(" (written in %s, played in %s)", written_key->name, play_key->name);
+    } else {
+        printf(" in %s", play_key->name);
+    }
+    printf(" ===\n");
 
     va_list args;
     va_start(args, driver);
@@ -1002,8 +1033,8 @@ void play(const char* name, int tempo_bpm, const key_signature_t* key, const aud
         }
 
         // Use key-aware function with proper temperament parameter
-        sequencer_event_t* voice_events =
-            notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, key, 0.3f, sqrt_chord_adjustment);
+        sequencer_event_t* voice_events = notes_to_events(&notes, tempo_bpm, sample_rate, &equal_temperament, written_key,
+                                                          transposition, 0.3f, sqrt_chord_adjustment);
 
         if (v == 0) {
             all_events = voice_events;
@@ -1039,13 +1070,13 @@ void test_chords(const audio_driver_t* driver) {
     // test_play_melody("Arpeggiated vs Chord", arpeggiated, 120, driver);
 
     // Demonstrate multi-voice polyphony with new play() function
-    play("Two-Voice Counterpoint", 120, &c_major, driver,
+    play("Two-Voice Counterpoint", 120, &c_major, &c_major, driver,
          "c4 d e f g a b c'2", // Voice 1: ascending scale
          "c2 f2 e2 g2 c'1", // Voice 2: slower harmony
          NULL);
 
     // Three-voice example
-    play("Three-Voice Harmony", 100, &c_major, driver,
+    play("Three-Voice Harmony", 100, &c_major, &c_major, driver,
          "c4 d e f g f e d c2", // Melody
          "c2 f2 g2 c2", // Bass
          "e2 a2 g2 e2", // Middle voice
@@ -1054,7 +1085,7 @@ void test_chords(const audio_driver_t* driver) {
 
 // Wrapper function to keep backward compatibility
 void play_twinkle_twinkle(const audio_driver_t* driver) {
-    play("Twinkle Twinkle Little Star", 120, &a_major, driver, "c4 c g g a a g2 f4 f e e d d c2");
+    play("Twinkle Twinkle Little Star", 120, &c_major, &c_major, driver, "c4 c g g a a g2 f4 f e e d d c2", NULL);
 }
 
 // Mary Had a Little Lamb - enhanced version with accompaniment
@@ -1063,7 +1094,7 @@ void play_mary_had_a_little_lamb(const audio_driver_t* driver) {
     // play("Mary Had a Little Lamb (Simple)", 120, driver, "e4 d c d e e e2 d4 d d2 e4 g g2 e4 d c d e e e e d d e d c2", NULL);
 
     // Multi-voice version with bass accompaniment
-    play("Mary Had a Little Lamb (With Bass)", 120, &c_major, driver,
+    play("Mary Had a Little Lamb (With Bass)", 120, &c_major, &c_major, driver,
          "e4 d c d e e e2 d4 d d2   e4 g g2   e4 d c  d e e e e d d e d   c1", // melody
          "c,2   g,,2   c,2   g,,2  d,2   g,,2  c,2   g,,2  c,2 g,,2 c,2  g,,2 d,2  g,,2 c,1", // bass
          NULL);
@@ -1071,14 +1102,14 @@ void play_mary_had_a_little_lamb(const audio_driver_t* driver) {
 
 // Row Row Row Your Boat with correct 6/8 rhythm
 void play_row_row_row(const audio_driver_t* driver) {
-    play("Row Row Row Your Boat", 120, &c_major, driver,
-         "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.");
+    play("Row Row Row Your Boat", 120, &c_major, &c_major, driver,
+         "c4. c4. c4 d8 e4. e4 d8 e4 f8 g2. c'8 c'8 c'8 g8 g8 g8 e8 e8 e8 c8 c8 c8 g4 f8 e4 d8 c2.", NULL);
 }
 
 // Test triplets with a simple example
 void play_triplets(const audio_driver_t* driver) {
     const char* melody = "c4 d4 e8t f8t g8t a2 g4 f4 e8t d8t c8t d2";
-    play("Triplet Test", 120, &c_major, driver);
+    play("Triplet Test", 120, &c_major, &c_major, driver, melody, NULL);
 }
 
 void test_frequencies(void) {
@@ -1100,7 +1131,7 @@ void test_frequencies(void) {
         int last_duration = 4;
         note_t note = parse_note(&p, &last_duration);
 
-        double freq = note_to_frequency(&note, &equal_temperament, &c_major);
+        double freq = note_to_frequency(&note, &equal_temperament, &c_major, 0);
 
         printf("  ");
         print_note(&note);
