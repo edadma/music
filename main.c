@@ -4,6 +4,7 @@
 
 #include <stddef.h>
 
+#include "fast_math.h"
 #include "music.h"
 #include "pulseaudio_driver.h"
 
@@ -15,6 +16,9 @@
 // }
 
 int main(void) {
+    // Initialize fast math tables
+    init_fast_math();
+
     // Test single tone first
     // printf("Testing single A4 tone...\n");
     // play_tone_pulse(440.0, 1000, 0.5); // A4 for 1 second at half volume

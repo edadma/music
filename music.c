@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "fast_math.h"
+
 #define MAX_CHORD_SIZE 8
 
 // Key signature definitions
@@ -615,7 +617,7 @@ int note_to_absolute_semitone(const note_t* note, const key_signature_t* key, in
 
 double equal_temperament_freq(int absolute_semitone) {
     const double c0_freq = 16.351597831287414;
-    return c0_freq * pow(2.0, absolute_semitone / 12.0);
+    return c0_freq * fast_pow2(absolute_semitone / 12.0);
 }
 
 double note_to_frequency(const note_t* note, const temperament_t* temperament, const key_signature_t* key, int transposition) {
@@ -642,7 +644,7 @@ double werckmeister3_freq(int absolute_semitone) {
     int octave = absolute_semitone / 12;
 
     const double c4_freq = 261.626;
-    return c4_freq * ratios[chromatic_pos] * pow(2.0, octave - 4);
+    return c4_freq * ratios[chromatic_pos] * fast_pow2(octave - 4);
 }
 
 // Add to temperament registry
@@ -660,7 +662,7 @@ int calculate_total_samples(sequencer_event_t* events, int event_count) {
 }
 
 float sine_wave(const sequencer_event_t* event, int sample_index, int sample_rate) {
-    return sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
+    return fast_sin(2.0 * M_PI * event->frequency * sample_index / sample_rate);
 }
 
 float square_wave(const sequencer_event_t* event, int sample_index, int sample_rate) {
@@ -677,7 +679,7 @@ float square_wave(const sequencer_event_t* event, int sample_index, int sample_r
         max_harmonic--;
 
     for (int h = 1; h <= max_harmonic; h += 2) {
-        result += sin(h * t) / h;
+        result += fast_sin(h * t) / h;
     }
 
     return result * 0.4f;
@@ -720,7 +722,7 @@ float pluck_envelope(const sequencer_event_t* event, int sample_index, int sampl
     }
 
     float decay_t = (t - attack_time) / (1.0f - attack_time);
-    return exp(-4.0f * decay_t);
+    return fast_exp(-4.0f * decay_t);
 }
 
 const instrument_t pluck_sine_instrument = {.name = "Pluck Sine", .waveform = sine_wave, .envelope = pluck_envelope};
