@@ -18,7 +18,6 @@ const key_signature_t e_major = {"E major", {1, 1, 0, 1, 1, 0, 0}}; // F#, C#, G
 const key_signature_t b_major = {"B major", {1, 1, 0, 1, 1, 1, 0}}; // F#, C#, G#, D#, A#
 const key_signature_t fs_major = {"F# major", {1, 1, 1, 1, 1, 1, 0}}; // F#, C#, G#, D#, A#, E#
 const key_signature_t cs_major = {"C# major", {1, 1, 1, 1, 1, 1, 1}}; // All sharp
-
 const key_signature_t f_major = {"F major", {0, 0, 0, 0, 0, 0, -1}}; // Bb
 const key_signature_t bf_major = {"Bb major", {0, 0, -1, 0, 0, 0, -1}}; // Bb, Eb
 const key_signature_t ef_major = {"Eb major", {0, 0, -1, 0, 0, -1, -1}}; // Bb, Eb, Ab
