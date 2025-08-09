@@ -35,11 +35,6 @@ static void init_exp_table(void) {
     exp_table_initialized = true;
 }
 
-void init_fast_math(void) {
-    init_sine_table();
-    init_exp_table();
-}
-
 float fast_sin(float x) {
     // Normalize to [0, 1] range
     x = x / (2.0f * M_PI);
@@ -106,4 +101,10 @@ float fast_pow2(float x) {
 
     // Linear interpolation
     return pow2_table[index] + frac * (pow2_table[index + 1] - pow2_table[index]);
+}
+
+void init_fast_math(void) {
+    init_sine_table();
+    init_exp_table();
+    init_pow2_table();
 }
