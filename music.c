@@ -624,6 +624,46 @@ double note_to_frequency(const note_t* note, const temperament_t* temperament, c
 // Standard temperament definitions
 const temperament_t equal_temperament = {.name = "Equal Temperament", .compute_frequency = equal_temperament_freq};
 
+static const double werckmeister3_ratios[12] = {
+    1.0000000, // C
+    1.0535686, // C#
+    1.1174011, // D
+    1.1852459, // D#
+    1.2533331, // E
+    1.3333333, // F
+    1.4062500, // F#
+    1.4953488, // G
+    1.5802469, // G#
+    1.6735537, // A
+    1.7777778, // A#
+    1.8877551 // B
+};
+
+double werckmeister3_freq(const note_t* note, const key_signature_t* key) {
+    if (is_rest(note)) {
+        return 0.0;
+    }
+
+    // Apply key signature
+    int key_accidental = key ? get_key_accidental(note->note_name, key) : 0;
+    int total_accidental = key_accidental + note->accidental;
+
+    // Calculate chromatic semitone (0-11)
+    int note_semitone = note_name_to_semitone(note->note_name);
+    int chromatic_index = (note_semitone + total_accidental + 12) % 12;
+
+    // Get ratio and apply octave
+    double ratio = werckmeister3_ratios[chromatic_index];
+    int octave = note->octave_shift + 4;
+
+    // C4 = 261.626 Hz in werckmeister III
+    const double c4_freq = 261.626;
+    return c4_freq * ratio * pow(2.0, octave - 4);
+}
+
+// Add to temperament registry
+const temperament_t werckmeister3_temperament = {.name = "Werckmeister III", .compute_frequency = werckmeister3_freq};
+
 int calculate_total_samples(sequencer_event_t* events, int event_count) {
     int max_end = 0;
     for (int i = 0; i < event_count; i++) {
