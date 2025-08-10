@@ -9,8 +9,12 @@ find_package(PkgConfig REQUIRED)
 # Find PipeWire
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 
-# Add executable
-add_executable(music main.c)
+# Add executable with all source files
+add_executable(music
+        main.c
+        music.c
+        pw_driver.c
+)
 
 # Link libraries and set include directories
 target_link_libraries(music
