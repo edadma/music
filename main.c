@@ -49,12 +49,12 @@ typedef struct {
     int32_t amplitude;         // Q1.31 amplitude for this partial
 } partial_t;
 
-// Simple linear decay envelope state
+// Simple exponential decay envelope state
 typedef struct {
     int32_t initial_amplitude; // Q1.31
-    int32_t decay_per_sample;  // Q1.31 amount to subtract each sample
+    int32_t decay_multiplier;  // Q1.31 per-sample multiplier (e.g., 0.9999)
     int32_t current_level;     // Q1.31 current amplitude
-} linear_decay_t;
+} pluck_decay_t;
 
 typedef int32_t (*envelope_fn_t)(void *envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
 
@@ -77,7 +77,7 @@ typedef struct {
 
     // === Envelope State (mutable) ===
     union {
-        linear_decay_t decay;
+        pluck_decay_t pluck;
     } envelope_state;
 
     // === Variable Partial Data ===
@@ -86,7 +86,7 @@ typedef struct {
 } event_t;
 
 #define MAX_SIMULTANEOUS_EVENTS 32
-#define AUDIBLE_THRESHOLD 0x00000200  // Q1.31 threshold
+#define AUDIBLE_THRESHOLD 0x00080000  // Higher threshold - about 1% of full scale
 
 typedef struct {
     event_t **events;
@@ -123,19 +123,18 @@ uint32_t freq_to_phase_increment(float freq, uint32_t sample_rate) {
 // ENVELOPE FUNCTIONS
 // ============================================================================
 
-int32_t linear_decay_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release) {
-    (void)samples_since_start;    // Unused for this simple envelope
-    (void)samples_until_release;  // Unused for this simple envelope
+int32_t pluck_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release) {
+    (void)samples_since_start;    // Unused for this envelope type
+    (void)samples_until_release;  // Unused for this envelope type
 
-    linear_decay_t *decay = (linear_decay_t*)state;
+    pluck_decay_t *pluck = (pluck_decay_t*)state;
 
-    // Simple linear decay from initial amplitude
-    decay->current_level -= decay->decay_per_sample;
-    if (decay->current_level < 0) {
-        decay->current_level = 0;
-    }
+    // Exponential decay: current_level *= decay_multiplier
+    // Q1.31 * Q1.31 = Q2.62, shift back to Q1.31
+    int64_t temp = (int64_t)pluck->current_level * pluck->decay_multiplier;
+    pluck->current_level = (int32_t)(temp >> 31);
 
-    return decay->current_level;
+    return pluck->current_level;
 }
 
 // ============================================================================
@@ -158,10 +157,14 @@ event_t* create_simple_event(uint32_t start_sample, float freq, float duration_s
     event->partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
     event->partials[0].amplitude = 0x7FFFFFFF;  // Full amplitude for this partial
 
-    // Setup linear decay envelope (2 second decay)
-    event->envelope_state.decay.initial_amplitude = 0x7FFFFFFF;
-    event->envelope_state.decay.decay_per_sample = 0x7FFFFFFF / (2 * sample_rate);
-    event->envelope_state.decay.current_level = 0x7FFFFFFF;
+    // Setup pluck envelope (exponential decay with ~2 second decay time)
+    event->envelope_state.pluck.initial_amplitude = 0x7FFFFFFF;
+    // Decay multiplier: for 2 second decay, we want level to drop to ~1/e in 2 seconds
+    // decay_multiplier = exp(-1/(2*sample_rate)) ≈ 0.999989 for 44.1kHz
+    double decay_rate = 1.0 / (0.2 * sample_rate);  // 2 second time constant
+    double multiplier = exp(-decay_rate);
+    event->envelope_state.pluck.decay_multiplier = (int32_t)(multiplier * 0x7FFFFFFF);
+    event->envelope_state.pluck.current_level = 0x7FFFFFFF;
 
     return event;
 }
@@ -171,8 +174,8 @@ int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     int32_t samples_until_release = event->release_sample - current_sample_index;
 
     // Get envelope level
-    int32_t envelope_level = linear_decay_envelope(&event->envelope_state.decay,
-                                                   samples_since_start, samples_until_release);
+    int32_t envelope_level = pluck_envelope(&event->envelope_state.pluck,
+                                           samples_since_start, samples_until_release);
 
     // Generate samples from all partials
     int32_t event_sample = 0;
@@ -233,7 +236,7 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
 
         // 3. Remove inaudible events (backwards iteration for safe removal)
         for (int j = seq->num_active - 1; j >= 0; j--) {
-            if (seq->active_events[j]->envelope_state.decay.current_level < AUDIBLE_THRESHOLD) {
+            if (seq->active_events[j]->envelope_state.pluck.current_level < AUDIBLE_THRESHOLD) {
                 printf("Removing inaudible event at sample %lu\n", seq->current_sample_index);
                 // Swap with last element and decrease count
                 seq->active_events[j] = seq->active_events[seq->num_active - 1];
