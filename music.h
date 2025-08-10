@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include "audio_driver.h"
 
 // ============================================================================
 // MUSIC SYSTEM TYPES
