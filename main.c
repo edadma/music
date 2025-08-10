@@ -8,9 +8,25 @@
 #include <math.h>
 #include <unistd.h>
 #include <signal.h>
+#include <time.h>
 
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
+
+// ============================================================================
+// GLOBAL STATE FOR PIPEWIRE CONTROL
+// ============================================================================
+
+static volatile bool running = true;
+static struct pw_main_loop *g_main_loop = NULL;  // For signal handler
+
+void signal_handler(int sig) {
+    (void)sig;  // Unused parameter
+    running = false;
+    if (g_main_loop) {
+        pw_main_loop_quit(g_main_loop);
+    }
+}
 
 // ============================================================================
 // CORE TYPE DEFINITIONS
@@ -28,8 +44,8 @@ typedef struct {
 } audio_driver_t;
 
 typedef struct {
-    int32_t phase_accum;       // Q1.31 current phase
-    int32_t phase_increment;   // Q1.31 phase step per sample  
+    uint32_t phase_accum;      // Unsigned for proper DDS wraparound
+    uint32_t phase_increment;  // Unsigned phase increment per sample
     int32_t amplitude;         // Q1.31 amplitude for this partial
 } partial_t;
 
@@ -54,16 +70,16 @@ typedef struct {
     uint32_t start_sample;
     uint32_t duration_samples;
     uint32_t release_sample;
-    
+
     // === Audio Properties (immutable) ===
     instrument_t *instrument;
     int32_t volume_scale;
-    
+
     // === Envelope State (mutable) ===
     union {
         linear_decay_t decay;
     } envelope_state;
-    
+
     // === Variable Partial Data ===
     uint8_t num_partials;
     partial_t partials[];
@@ -77,9 +93,11 @@ typedef struct {
     size_t num_events;
     uint32_t sample_rate;
     uint64_t current_sample_index;
+    uint64_t total_duration_samples; // Total song length
     size_t next_event_index;
     event_t *active_events[MAX_SIMULTANEOUS_EVENTS];
     size_t num_active;
+    bool completed;                // Set by callback when song ends, checked by main thread
 } sequencer_state_t;
 
 // ============================================================================
@@ -96,9 +114,9 @@ void init_sine_table(void) {
     }
 }
 
-// Convert frequency to Q1.31 phase increment
-int32_t freq_to_phase_increment(float freq, uint32_t sample_rate) {
-    return (int32_t)((freq / sample_rate) * 0x100000000LL);
+// Convert frequency to phase increment (unsigned for DDS)
+uint32_t freq_to_phase_increment(float freq, uint32_t sample_rate) {
+    return (uint32_t)((freq / sample_rate) * 0x100000000LL);
 }
 
 // ============================================================================
@@ -132,7 +150,7 @@ event_t* create_simple_event(uint32_t start_sample, float freq, float duration_s
     event->start_sample = start_sample;
     event->duration_samples = (uint32_t)(duration_sec * sample_rate);
     event->release_sample = start_sample + event->duration_samples;
-    event->volume_scale = 0x20000000;  // About 1/4 volume in Q1.31
+    event->volume_scale = 0x08000000;  // About 1/16 volume in Q1.31 (much quieter)
     event->num_partials = 1;
 
     // Setup single partial (fundamental frequency)
@@ -161,22 +179,27 @@ int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     for (int i = 0; i < event->num_partials; i++) {
         partial_t *p = &event->partials[i];
 
-        // Get sine wave sample
+        // Get sine wave sample using proper DDS lookup
         uint32_t table_index = (p->phase_accum >> 22) & (SINE_TABLE_SIZE - 1);
         int32_t wave_sample = sine_table[table_index];
 
-        // Apply partial amplitude
+        // Apply partial amplitude (Q1.31 * Q1.31 = Q2.62, shift back to Q1.31)
         int64_t partial_sample = (int64_t)wave_sample * p->amplitude;
         event_sample += (int32_t)(partial_sample >> 31);
 
-        // Advance phase
+        // Advance phase (unsigned arithmetic wraps properly)
         p->phase_accum += p->phase_increment;
     }
 
-    // Apply envelope and volume scaling
-    int64_t final_sample = (int64_t)event_sample * envelope_level;
-    final_sample = (final_sample >> 31) * event->volume_scale;
+    // Apply envelope (Q1.31 * Q1.31 = Q2.62, shift back to Q1.31)
+    int64_t enveloped_sample = (int64_t)event_sample * envelope_level;
+    enveloped_sample >>= 31;
 
+    // Apply volume scaling (Q1.31 * Q1.31 = Q2.62, shift back to Q1.31)
+    int64_t final_sample = enveloped_sample * event->volume_scale;
+    final_sample >>= 31;
+
+    // Convert Q1.31 to S16 (shift by 16 more bits)
     return (int16_t)(final_sample >> 16);
 }
 
@@ -223,16 +246,10 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
 
     // Check if song is complete
     if (seq->num_active == 0 && seq->next_event_index >= seq->num_events) {
-        printf("Song complete, freeing sequencer state\n");
-
-        // Free all events
-        for (size_t i = 0; i < seq->num_events; i++) {
-            free(seq->events[i]);
-        }
-        free(seq->events);
-        free(seq);
-
-        return false;  // End playback
+        printf("Song complete, marking as finished\n");
+        seq->completed = true;
+        running = false;  // Signal main loop to quit
+        return false;  // Tell PipeWire to stop calling us
     }
 
     return true;  // Continue playback
@@ -302,6 +319,7 @@ void* pipewire_init(uint32_t sample_rate, audio_callback_t callback, int *error)
     pw_init(NULL, NULL);  // Initialize PipeWire library
 
     ctx->loop = pw_main_loop_new(NULL);
+    g_main_loop = ctx->loop;  // Store for signal handler
     ctx->context = pw_context_new(pw_main_loop_get_loop(ctx->loop), NULL, 0);
     ctx->core = pw_context_connect(ctx->context, NULL, 0);
     ctx->callback = callback;
@@ -399,6 +417,7 @@ sequencer_state_t* create_test_song(uint32_t sample_rate) {
     seq->current_sample_index = 0;
     seq->next_event_index = 0;
     seq->num_active = 0;
+    seq->completed = false;
 
     // Create 4 test events with gaps (rests) between them
     seq->num_events = 4;
@@ -416,59 +435,56 @@ sequencer_state_t* create_test_song(uint32_t sample_rate) {
     // Event 3: C5 (523.25 Hz) after 1 second gap, 2 second duration
     seq->events[3] = create_simple_event(sample_rate * 5.5f, 523.25f, 2.0f, sample_rate);
 
+    // Calculate total song duration (last event start + duration + some decay time)
+    seq->total_duration_samples = sample_rate * 5.5f + sample_rate * 2.0f + sample_rate * 2.0f; // Extra time for decay
+
     printf("Created test song with %zu events\n", seq->num_events);
     printf("Event 0: C4 at sample 0\n");
     printf("Event 1: E4 at sample %u\n", (uint32_t)(sample_rate * 1.5f));
     printf("Event 2: G4 at sample %u\n", (uint32_t)(sample_rate * 3.0f));
     printf("Event 3: C5 at sample %u\n", (uint32_t)(sample_rate * 5.5f));
+    printf("Total duration: %lu samples (%.1f seconds)\n",
+           seq->total_duration_samples, seq->total_duration_samples / (float)sample_rate);
 
     return seq;
 }
 
-static volatile bool running = true;
-
-void signal_handler(int sig) {
-    (void)sig;  // Unused parameter
-    running = false;
-}
-
 int main() {
     printf("Initializing simple audio test...\n");
-    
+
     signal(SIGINT, signal_handler);
     init_sine_table();
-    
+
     const audio_driver_t *driver = &pipewire_driver;
     int error;
-    
+
     // Initialize audio system
     void *audio_ctx = driver->init(44100, sequencer_callback, &error);
     if (!audio_ctx) {
         printf("Failed to initialize audio: %s\n", driver->strerror(error));
         return 1;
     }
-    
+
     // Create test song and start playback
     sequencer_state_t *song = create_test_song(44100);
     driver->play(audio_ctx, song);
-    
+
     printf("Playing test song. Press Ctrl+C to stop.\n");
     printf("Expected: C4 -> gap -> E4 -> gap -> G4 -> gap -> C5 -> end\n");
-    
-    // Simple event loop - in real app this would be integrated with main loop
-    while (running) {
-        sleep(1);
-    }
-    
+
+    // Run PipeWire main loop (blocks until completion or interrupted)
+    pw_audio_context_t *ctx = (pw_audio_context_t*)audio_ctx;
+    pw_main_loop_run(ctx->loop);
+
     printf("Stopping playback...\n");
     driver->stop(audio_ctx);
-    if (song) {  // Song might have been freed by callback
-        for (size_t i = 0; i < song->num_events; i++) {
-            free(song->events[i]);
-        }
-        free(song->events);
-        free(song);
+
+    // Now safely clean up song state
+    for (size_t i = 0; i < song->num_events; i++) {
+        free(song->events[i]);
     }
+    free(song->events);
+    free(song);
     
     driver->cleanup(audio_ctx);
     printf("Test complete.\n");
