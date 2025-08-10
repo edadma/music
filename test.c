@@ -34,12 +34,13 @@ event_t* create_simple_event(uint32_t start_sample, float freq, float duration_s
     event->partials[0].amplitude = 0x7FFFFFFF;  // Full amplitude for this partial
 
     // Setup ADSR envelope (keyboard-like)
-    event->envelope_state.adsr.attack_samples = sample_rate * 0.05f;   // 50ms attack
-    event->envelope_state.adsr.decay_samples = sample_rate * 0.2f;     // 200ms decay
-    event->envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF);  // 60% sustain
-    event->envelope_state.adsr.release_samples = sample_rate * 0.5f;   // 500ms release
-    event->envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;  // Start at audible threshold
-    event->envelope_state.adsr.phase = ADSR_ATTACK;  // Start in attack phase
+    event->envelope_state.adsr.attack_samples = (uint32_t)(sample_rate * 0.05f);   // 50ms attack
+    event->envelope_state.adsr.decay_samples = (uint32_t)(sample_rate * 0.2f);     // 200ms decay
+    event->envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF);       // 60% sustain
+    event->envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.5f);   // 500ms release
+    event->envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;                   // Start at audible threshold
+    event->envelope_state.adsr.release_start_level = 0;                             // Will be set when release begins
+    event->envelope_state.adsr.phase = ADSR_ATTACK;                                 // Start in attack phase
 
     return event;
 }

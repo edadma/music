@@ -18,11 +18,6 @@ void music_init(void) {
     }
 }
 
-// Convert frequency to phase increment (unsigned for DDS)
-static uint32_t freq_to_phase_increment(float freq, uint32_t sample_rate) {
-    return (uint32_t)((freq / sample_rate) * 0x100000000LL);
-}
-
 // ============================================================================
 // ENVELOPE FUNCTIONS
 // ============================================================================
@@ -48,19 +43,19 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
     if (samples_until_release <= 0) {
         // Release phase
         if (adsr->phase != ADSR_RELEASE) {
+            // First time entering release - capture the current level
+            adsr->release_start_level = adsr->current_level;
             adsr->phase = ADSR_RELEASE;
-            // Note: current_level stays at whatever it was when release started
         }
 
-        // Linear decay to zero over release_samples
-        uint32_t samples_since_release = -samples_until_release;
+        // Smooth decay from the captured release start level to zero
+        uint32_t samples_since_release = (uint32_t)(-samples_until_release);
         if (samples_since_release >= adsr->release_samples) {
             adsr->current_level = 0;
         } else {
-            // Linear interpolation from current_level to 0
-            int32_t release_progress = (int32_t)samples_since_release;
-            int32_t remaining_release = adsr->release_samples - release_progress;
-            adsr->current_level = (adsr->current_level * remaining_release) / adsr->release_samples;
+            // Linear decay from release_start_level to zero
+            uint32_t remaining_samples = adsr->release_samples - samples_since_release;
+            adsr->current_level = (adsr->release_start_level * (int32_t)remaining_samples) / (int32_t)adsr->release_samples;
         }
     }
     else if (samples_since_start < adsr->attack_samples) {
@@ -176,13 +171,32 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
 
         buffer[i] = (int16_t)mixed_sample;
 
-        // 3. Remove inaudible events AFTER sample generation (backwards iteration for safe removal)
+        // 3. Remove events that have completed their release phase (backwards iteration for safe removal)
         for (int j = seq->num_active - 1; j >= 0; j--) {
-            if (get_current_envelope_level(seq->active_events[j]) < AUDIBLE_THRESHOLD) {
-                printf("Removing inaudible event at sample %lu\n", seq->current_sample_index);
-                // Swap with last element and decrease count
-                seq->active_events[j] = seq->active_events[seq->num_active - 1];
-                seq->num_active--;
+            event_t *event = seq->active_events[j];
+
+            // Only remove events that are in release phase AND have released to near zero
+            if (event->instrument && event->instrument->envelope == adsr_envelope) {
+                adsr_t *adsr = &event->envelope_state.adsr;
+
+                // Remove if in release phase and release has completed
+                int32_t samples_until_release = event->release_sample - seq->current_sample_index;
+
+                if (samples_until_release <= 0) {  // In release phase
+                    uint32_t samples_since_release = (uint32_t)(-samples_until_release);
+                    if (samples_since_release >= adsr->release_samples) {  // Release completed
+                        printf("Removing completed ADSR event at sample %lu\n", seq->current_sample_index);
+                        seq->active_events[j] = seq->active_events[seq->num_active - 1];
+                        seq->num_active--;
+                    }
+                }
+            } else {
+                // For other envelope types, use the threshold method
+                if (get_current_envelope_level(event) < AUDIBLE_THRESHOLD) {
+                    printf("Removing inaudible event at sample %lu\n", seq->current_sample_index);
+                    seq->active_events[j] = seq->active_events[seq->num_active - 1];
+                    seq->num_active--;
+                }
             }
         }
 
