@@ -249,6 +249,12 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
         printf("Song complete, marking as finished\n");
         seq->completed = true;
         running = false;  // Signal main loop to quit
+
+        // Tell PipeWire main loop to exit
+        if (g_main_loop) {
+            pw_main_loop_quit(g_main_loop);
+        }
+
         return false;  // Tell PipeWire to stop calling us
     }
 
