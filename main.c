@@ -248,14 +248,7 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
     if (seq->num_active == 0 && seq->next_event_index >= seq->num_events) {
         printf("Song complete, marking as finished\n");
         seq->completed = true;
-        running = false;  // Signal main loop to quit
-
-        // Tell PipeWire main loop to exit
-        if (g_main_loop) {
-            pw_main_loop_quit(g_main_loop);
-        }
-
-        return false;  // Tell PipeWire to stop calling us
+        return false;  // Tell audio driver to stop calling us
     }
 
     return true;  // Continue playback
@@ -296,7 +289,12 @@ static void on_process(void *userdata) {
         bool continue_playing = ctx->callback(samples, n_samples, ctx->user_data);
         if (!continue_playing) {
             ctx->playing = false;
-            ctx->user_data = NULL;  // Callback freed the data
+            ctx->user_data = NULL;  // Callback finished the song
+
+            // PipeWire-specific: tell main loop to quit
+            if (g_main_loop) {
+                pw_main_loop_quit(g_main_loop);
+            }
         }
     } else {
         // Fill with silence
