@@ -2,6 +2,7 @@
 #include "audio_driver.h"
 #include "pw_driver.h"
 #include "music.h"
+#include "test.h"
 
 int main() {
     printf("Initializing simple audio test...\n");
@@ -27,7 +28,7 @@ int main() {
     driver->play(audio_ctx, song);
 
     printf("Playing test song. Press Ctrl+C to stop.\n");
-    printf("Expected: C4 -> gap -> E4 -> gap -> G4 -> gap -> C5 -> end\n");
+    printf("Expected: ADSR keyboard-style notes: C4 -> gap -> E4 -> gap -> G4 -> gap -> C5 -> end\n");
 
     // Run main loop (blocks until completion or interrupted)
     pw_driver_run_main_loop(audio_ctx);

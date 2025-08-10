@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "audio_driver.h"
 
 // ============================================================================
 // MUSIC SYSTEM TYPES
@@ -21,6 +22,22 @@ typedef struct {
     int32_t decay_multiplier;  // Q1.31 per-sample multiplier (e.g., 0.9999)
     int32_t current_level;     // Q1.31 current amplitude
 } pluck_decay_t;
+
+// ADSR envelope state
+typedef struct {
+    int32_t attack_samples;    // Number of samples for attack phase
+    int32_t decay_samples;     // Number of samples for decay phase
+    int32_t sustain_level;     // Q1.31 sustain amplitude level
+    int32_t release_samples;   // Number of samples for release phase
+    int32_t current_level;     // Q1.31 current amplitude
+    uint8_t phase;             // Current ADSR phase
+} adsr_t;
+
+// ADSR phase constants
+#define ADSR_ATTACK  0
+#define ADSR_DECAY   1
+#define ADSR_SUSTAIN 2
+#define ADSR_RELEASE 3
 
 typedef int32_t (*envelope_fn_t)(void *envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
 
@@ -44,6 +61,7 @@ typedef struct {
     // === Envelope State (mutable) ===
     union {
         pluck_decay_t pluck;
+        adsr_t adsr;
     } envelope_state;
 
     // === Variable Partial Data ===
@@ -52,7 +70,7 @@ typedef struct {
 } event_t;
 
 #define MAX_SIMULTANEOUS_EVENTS 32
-#define AUDIBLE_THRESHOLD 0x00080000  // Higher threshold - about 1% of full scale
+#define AUDIBLE_THRESHOLD 0x00001000  // Much lower threshold - about 0.1% of full scale
 
 typedef struct {
     event_t **events;
@@ -73,22 +91,20 @@ typedef struct {
 // Initialize sine table (call once at startup)
 void music_init(void);
 
-// Create a simple test event
-event_t* create_simple_event(uint32_t start_sample, float freq, float duration_sec, uint32_t sample_rate);
-
 // Generate one sample from an event
 int16_t generate_event_sample(event_t *event, uint64_t current_sample_index);
 
+// Get current envelope level for threshold checking
+int32_t get_current_envelope_level(event_t *event);
+
 // Main sequencer callback function (audio system agnostic)
 bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data);
-
-// Create test song
-sequencer_state_t* create_test_song(uint32_t sample_rate);
 
 // Clean up sequencer state
 void cleanup_song(sequencer_state_t *seq);
 
 // Envelope functions
 int32_t pluck_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release);
+int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release);
 
 #endif // MUSIC_H

@@ -41,45 +41,70 @@ int32_t pluck_envelope(void *state, uint32_t samples_since_start, int32_t sample
     return pluck->current_level;
 }
 
+int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release) {
+    adsr_t *adsr = (adsr_t*)state;
+
+    // Determine current phase based on timing
+    if (samples_until_release <= 0) {
+        // Release phase
+        if (adsr->phase != ADSR_RELEASE) {
+            adsr->phase = ADSR_RELEASE;
+            // Note: current_level stays at whatever it was when release started
+        }
+
+        // Linear decay to zero over release_samples
+        uint32_t samples_since_release = -samples_until_release;
+        if (samples_since_release >= adsr->release_samples) {
+            adsr->current_level = 0;
+        } else {
+            // Linear interpolation from current_level to 0
+            int32_t release_progress = (int32_t)samples_since_release;
+            int32_t remaining_release = adsr->release_samples - release_progress;
+            adsr->current_level = (adsr->current_level * remaining_release) / adsr->release_samples;
+        }
+    }
+    else if (samples_since_start < adsr->attack_samples) {
+        // Attack phase - ramp from AUDIBLE_THRESHOLD to full scale
+        adsr->phase = ADSR_ATTACK;
+        int32_t attack_range = 0x7FFFFFFF - AUDIBLE_THRESHOLD;
+        int32_t attack_progress = ((int64_t)samples_since_start * attack_range) / adsr->attack_samples;
+        adsr->current_level = AUDIBLE_THRESHOLD + attack_progress;
+    }
+    else if (samples_since_start < adsr->attack_samples + adsr->decay_samples) {
+        // Decay phase
+        adsr->phase = ADSR_DECAY;
+        // Linear ramp from full scale to sustain_level over decay_samples
+        uint32_t decay_progress = samples_since_start - adsr->attack_samples;
+        int32_t decay_range = 0x7FFFFFFF - adsr->sustain_level;
+        int32_t decay_amount = ((int64_t)decay_progress * decay_range) / adsr->decay_samples;
+        adsr->current_level = 0x7FFFFFFF - decay_amount;
+    }
+    else {
+        // Sustain phase
+        adsr->phase = ADSR_SUSTAIN;
+        adsr->current_level = adsr->sustain_level;
+    }
+
+    return adsr->current_level;
+}
+
 // ============================================================================
 // EVENT AND SAMPLE GENERATION
 // ============================================================================
-
-event_t* create_simple_event(uint32_t start_sample, float freq, float duration_sec, uint32_t sample_rate) {
-    // Allocate event with one partial
-    event_t *event = malloc(sizeof(event_t) + sizeof(partial_t));
-    if (!event) return NULL;
-
-    event->start_sample = start_sample;
-    event->duration_samples = (uint32_t)(duration_sec * sample_rate);
-    event->release_sample = start_sample + event->duration_samples;
-    event->volume_scale = 0x08000000;  // About 1/16 volume in Q1.31 (much quieter)
-    event->num_partials = 1;
-
-    // Setup single partial (fundamental frequency)
-    event->partials[0].phase_accum = 0;
-    event->partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
-    event->partials[0].amplitude = 0x7FFFFFFF;  // Full amplitude for this partial
-
-    // Setup pluck envelope (exponential decay with ~2 second decay time)
-    event->envelope_state.pluck.initial_amplitude = 0x7FFFFFFF;
-    // Decay multiplier: for 2 second decay, we want level to drop to ~1/e in 2 seconds
-    // decay_multiplier = exp(-1/(2*sample_rate)) ≈ 0.999989 for 44.1kHz
-    double decay_rate = 1.0 / (0.2 * sample_rate);  // 2 second time constant
-    double multiplier = exp(-decay_rate);
-    event->envelope_state.pluck.decay_multiplier = (int32_t)(multiplier * 0x7FFFFFFF);
-    event->envelope_state.pluck.current_level = 0x7FFFFFFF;
-
-    return event;
-}
 
 int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     uint32_t samples_since_start = current_sample_index - event->start_sample;
     int32_t samples_until_release = event->release_sample - current_sample_index;
 
-    // Get envelope level
-    int32_t envelope_level = pluck_envelope(&event->envelope_state.pluck,
-                                           samples_since_start, samples_until_release);
+    // Get envelope level using the instrument's envelope function
+    int32_t envelope_level;
+    if (event->instrument && event->instrument->envelope) {
+        envelope_level = event->instrument->envelope(&event->envelope_state,
+                                                   samples_since_start, samples_until_release);
+    } else {
+        // Fallback to full volume if no envelope function
+        envelope_level = 0x7FFFFFFF;
+    }
 
     // Generate samples from all partials
     int32_t event_sample = 0;
@@ -110,6 +135,19 @@ int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     return (int16_t)(final_sample >> 16);
 }
 
+int32_t get_current_envelope_level(event_t *event) {
+    // Return the current envelope level based on envelope type
+    // We can determine type by checking which envelope function is assigned
+    if (event->instrument && event->instrument->envelope == adsr_envelope) {
+        return event->envelope_state.adsr.current_level;
+    } else if (event->instrument && event->instrument->envelope == pluck_envelope) {
+        return event->envelope_state.pluck.current_level;
+    } else {
+        // Unknown or no envelope, assume audible
+        return 0x7FFFFFFF;
+    }
+}
+
 // ============================================================================
 // SEQUENCER CALLBACK
 // ============================================================================
@@ -130,7 +168,7 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
             seq->next_event_index++;
         }
 
-        // 2. Generate sample from all active events
+        // 2. Generate sample from all active events (this updates envelopes)
         int32_t mixed_sample = 0;
         for (size_t j = 0; j < seq->num_active; j++) {
             mixed_sample += generate_event_sample(seq->active_events[j], seq->current_sample_index);
@@ -138,9 +176,9 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
 
         buffer[i] = (int16_t)mixed_sample;
 
-        // 3. Remove inaudible events (backwards iteration for safe removal)
+        // 3. Remove inaudible events AFTER sample generation (backwards iteration for safe removal)
         for (int j = seq->num_active - 1; j >= 0; j--) {
-            if (seq->active_events[j]->envelope_state.pluck.current_level < AUDIBLE_THRESHOLD) {
+            if (get_current_envelope_level(seq->active_events[j]) < AUDIBLE_THRESHOLD) {
                 printf("Removing inaudible event at sample %lu\n", seq->current_sample_index);
                 // Swap with last element and decrease count
                 seq->active_events[j] = seq->active_events[seq->num_active - 1];
@@ -159,48 +197,6 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
     }
 
     return true;  // Continue playback
-}
-
-// ============================================================================
-// TEST SETUP
-// ============================================================================
-
-sequencer_state_t* create_test_song(uint32_t sample_rate) {
-    sequencer_state_t *seq = calloc(1, sizeof(sequencer_state_t));
-    seq->sample_rate = sample_rate;
-    seq->current_sample_index = 0;
-    seq->next_event_index = 0;
-    seq->num_active = 0;
-    seq->completed = false;
-
-    // Create 4 test events with gaps (rests) between them
-    seq->num_events = 4;
-    seq->events = malloc(seq->num_events * sizeof(event_t*));
-
-    // Event 0: C4 (261.63 Hz) at start, 1 second duration
-    seq->events[0] = create_simple_event(0, 261.63f, 1.0f, sample_rate);
-
-    // Event 1: E4 (329.63 Hz) after 0.5 second gap, 1 second duration
-    seq->events[1] = create_simple_event(sample_rate * 1.5f, 329.63f, 1.0f, sample_rate);
-
-    // Event 2: G4 (392.00 Hz) after 0.5 second gap, 1.5 second duration
-    seq->events[2] = create_simple_event(sample_rate * 3.0f, 392.00f, 1.5f, sample_rate);
-
-    // Event 3: C5 (523.25 Hz) after 1 second gap, 2 second duration
-    seq->events[3] = create_simple_event(sample_rate * 5.5f, 523.25f, 2.0f, sample_rate);
-
-    // Calculate total song duration (last event start + duration + some decay time)
-    seq->total_duration_samples = sample_rate * 5.5f + sample_rate * 2.0f + sample_rate * 2.0f; // Extra time for decay
-
-    printf("Created test song with %zu events\n", seq->num_events);
-    printf("Event 0: C4 at sample 0\n");
-    printf("Event 1: E4 at sample %u\n", (uint32_t)(sample_rate * 1.5f));
-    printf("Event 2: G4 at sample %u\n", (uint32_t)(sample_rate * 3.0f));
-    printf("Event 3: C5 at sample %u\n", (uint32_t)(sample_rate * 5.5f));
-    printf("Total duration: %lu samples (%.1f seconds)\n",
-           seq->total_duration_samples, seq->total_duration_samples / (float)sample_rate);
-
-    return seq;
 }
 
 void cleanup_song(sequencer_state_t *seq) {

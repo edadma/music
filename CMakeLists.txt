@@ -14,6 +14,7 @@ add_executable(music
         main.c
         music.c
         pw_driver.c
+        test.c
 )
 
 # Link libraries and set include directories
