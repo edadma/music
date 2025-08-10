@@ -45,10 +45,11 @@ driver->cleanup(audio_ctx);
 ```
 
 ### Memory Management Contract
-- **Natural song end**: Callback returns `false` and sets `completed = true` in user_data. Main thread cleans up memory after detecting completion.
+- **Natural song end**: Callback returns `false` and sets `completed = true` in user_data. Audio driver implementation handles system-specific shutdown (e.g., `pw_main_loop_quit()` for PipeWire). Main thread cleans up memory after detecting completion.
 - **Forced stop**: Music system calls `stop()`, then frees user_data safely since callback has stopped.
 - **Audio driver**: Never frees user_data, only manages audio system connection.
 - **No race conditions**: Callback never frees user_data, avoiding use-after-free bugs.
+- **Abstraction boundary**: `audio_callback_t` must remain completely audio-system agnostic. It should never contain PipeWire, ALSA, or other system-specific calls. Only the audio driver implementation handles system-specific lifecycle management.
 
 ## Fixed-Point Arithmetic System
 
@@ -543,9 +544,10 @@ events[3] = create_event(sample_rate * 5.5f, 523.25f, 2.0f, sample_rate);  // C5
 
 ## Critical Design Benefits
 
-- **Portability**: Same callback works for PipeWire and Pico IRQ
+- **Portability**: Same callback works for PipeWire and Pico IRQ - `audio_callback_t` contains zero system-specific code
 - **Performance**: All heavy computation moved to parse time
 - **Memory Efficiency**: Flexible arrays scale to actual instrument complexity
 - **Musical Flexibility**: Articulation support enables expressive performance
 - **Memory Safety**: Clear ownership prevents use-after-free bugs in callback/main thread interaction
+- **Clean Abstraction**: Music system knows nothing about PipeWire, ALSA, etc. Audio drivers handle their own lifecycle management
 - **Maintainability**: Clean separation between audio systems and music logic
