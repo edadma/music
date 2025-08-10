@@ -33,18 +33,21 @@ event_t* create_simple_event(uint32_t start_sample, float freq, float duration_s
     event->partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
     event->partials[0].amplitude = 0x7FFFFFFF;  // Full amplitude for this partial
 
-    // Setup ADSR envelope (keyboard-like)
+    // Setup ADSR envelope (keyboard-like with anti-click release)
     event->envelope_state.adsr.attack_samples = (uint32_t)(sample_rate * 0.05f);   // 50ms attack
     event->envelope_state.adsr.decay_samples = (uint32_t)(sample_rate * 0.2f);     // 200ms decay
     event->envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF);       // 60% sustain
     event->envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.5f);   // 500ms release
+    event->envelope_state.adsr.min_release_samples = (uint32_t)(sample_rate * 0.02f); // 20ms minimum to prevent clicks
     event->envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;                   // Start at audible threshold
     event->envelope_state.adsr.release_start_level = 0;                             // Will be set when release begins
+    event->envelope_state.adsr.release_coeff = 0;                                   // Will be calculated when release begins
     event->envelope_state.adsr.phase = ADSR_ATTACK;                                 // Start in attack phase
 
     return event;
 }
 
+// Create ADSR test song with anti-click release
 sequencer_state_t* create_test_song(uint32_t sample_rate) {
     sequencer_state_t *seq = calloc(1, sizeof(sequencer_state_t));
     seq->sample_rate = sample_rate;
@@ -57,27 +60,29 @@ sequencer_state_t* create_test_song(uint32_t sample_rate) {
     seq->num_events = 4;
     seq->events = malloc(seq->num_events * sizeof(event_t*));
 
-    // Event 0: C4 (261.63 Hz) at start, 1 second duration
+    // Event 0: C4 (261.63 Hz) at start, 1 second duration - normal release
     seq->events[0] = create_simple_event(0, 261.63f, 1.0f, sample_rate);
 
-    // Event 1: E4 (329.63 Hz) after 0.5 second gap, 1 second duration
+    // Event 1: E4 (329.63 Hz) after 0.5 second gap, 1 second duration - fast release test
     seq->events[1] = create_simple_event(sample_rate * 1.5f, 329.63f, 1.0f, sample_rate);
+    // Override with very fast release to test click prevention
+    seq->events[1]->envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.005f); // 5ms release
 
-    // Event 2: G4 (392.00 Hz) after 0.5 second gap, 1.5 second duration
+    // Event 2: G4 (392.00 Hz) after 0.5 second gap, 1.5 second duration - normal release
     seq->events[2] = create_simple_event(sample_rate * 3.0f, 392.00f, 1.5f, sample_rate);
 
-    // Event 3: C5 (523.25 Hz) after 1 second gap, 2 second duration
+    // Event 3: C5 (523.25 Hz) after 1 second gap, 2 second duration - normal release
     seq->events[3] = create_simple_event(sample_rate * 5.5f, 523.25f, 2.0f, sample_rate);
 
     // Calculate total song duration (last event start + duration + some decay time)
-    seq->total_duration_samples = sample_rate * 5.5f + sample_rate * 2.0f + sample_rate * 1.0f; // Less extra time since ADSR releases faster
+    seq->total_duration_samples = sample_rate * 5.5f + sample_rate * 2.0f + sample_rate * 1.0f; // Less extra time for exponential decay
 
-    printf("Created ADSR test song with %zu events\n", seq->num_events);
-    printf("Event 0: C4 at sample 0 (attack=50ms, decay=200ms, sustain=60%%, release=500ms)\n");
-    printf("Event 1: E4 at sample %u\n", (uint32_t)(sample_rate * 1.5f));
-    printf("Event 2: G4 at sample %u\n", (uint32_t)(sample_rate * 3.0f));
-    printf("Event 3: C5 at sample %u\n", (uint32_t)(sample_rate * 5.5f));
-    printf("Expected: Keyboard-like notes with attack/decay/sustain/release\n");
+    printf("Created anti-click ADSR test song with %zu events\n", seq->num_events);
+    printf("Event 0: C4 at sample 0 (normal 500ms exponential release)\n");
+    printf("Event 1: E4 at sample %u (fast 5ms release -> extended to 20ms minimum)\n", (uint32_t)(sample_rate * 1.5f));
+    printf("Event 2: G4 at sample %u (normal 500ms exponential release)\n", (uint32_t)(sample_rate * 3.0f));
+    printf("Event 3: C5 at sample %u (normal 500ms exponential release)\n", (uint32_t)(sample_rate * 5.5f));
+    printf("Expected: Smooth exponential release with no clicks, even on fast release note\n");
     printf("Total duration: %lu samples (%.1f seconds)\n",
            seq->total_duration_samples, seq->total_duration_samples / (float)sample_rate);
 

@@ -25,13 +25,15 @@ typedef struct {
 
 // ADSR envelope state
 typedef struct {
-    uint32_t attack_samples;    // Number of samples for attack phase
-    uint32_t decay_samples;     // Number of samples for decay phase
-    int32_t sustain_level;      // Q1.31 sustain amplitude level
-    uint32_t release_samples;   // Number of samples for release phase
-    int32_t current_level;      // Q1.31 current amplitude
-    int32_t release_start_level; // Q1.31 level when release phase began
-    uint8_t phase;              // Current ADSR phase
+    uint32_t attack_samples;        // Number of samples for attack phase
+    uint32_t decay_samples;         // Number of samples for decay phase
+    int32_t sustain_level;          // Q1.31 sustain amplitude level
+    uint32_t release_samples;       // Number of samples for release phase
+    int32_t current_level;          // Q1.31 current amplitude
+    int32_t release_start_level;    // Q1.31 level when release phase began
+    int32_t release_coeff;          // Q1.31 exponential release coefficient
+    uint32_t min_release_samples;   // Minimum release time to prevent clicks
+    uint8_t phase;                  // Current ADSR phase
 } adsr_t;
 
 // ADSR phase constants

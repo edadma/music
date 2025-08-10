@@ -43,19 +43,33 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
     if (samples_until_release <= 0) {
         // Release phase
         if (adsr->phase != ADSR_RELEASE) {
-            // First time entering release - capture the current level
+            // First time entering release - setup exponential release
             adsr->release_start_level = adsr->current_level;
             adsr->phase = ADSR_RELEASE;
+
+            // Calculate exponential release coefficient
+            // Using target ratio of -60dB (0.001) for natural decay
+            double target_ratio = 0.001;  // -60dB
+            uint32_t effective_release_samples = adsr->release_samples;
+
+            // Enforce minimum release time to prevent clicks (20ms minimum)
+            if (effective_release_samples < adsr->min_release_samples) {
+                effective_release_samples = adsr->min_release_samples;
+            }
+
+            // RC-circuit inspired exponential coefficient
+            // rate = exp(-log((1 + targetRatio) / targetRatio) / time)
+            double rate = exp(-log((1.0 + target_ratio) / target_ratio) / effective_release_samples);
+            adsr->release_coeff = (int32_t)(rate * 0x7FFFFFFF);  // Convert to Q1.31
         }
 
-        // Smooth decay from the captured release start level to zero
-        uint32_t samples_since_release = (uint32_t)(-samples_until_release);
-        if (samples_since_release >= adsr->release_samples) {
+        // Exponential decay using iterative multiplication
+        int64_t temp = (int64_t)adsr->current_level * adsr->release_coeff;
+        adsr->current_level = (int32_t)(temp >> 31);
+
+        // Clamp to zero when it gets very small (prevents denormals and infinite decay)
+        if (adsr->current_level < AUDIBLE_THRESHOLD / 4) {
             adsr->current_level = 0;
-        } else {
-            // Linear decay from release_start_level to zero
-            uint32_t remaining_samples = adsr->release_samples - samples_since_release;
-            adsr->current_level = (adsr->release_start_level * (int32_t)remaining_samples) / (int32_t)adsr->release_samples;
         }
     }
     else if (samples_since_start < adsr->attack_samples) {
@@ -175,20 +189,17 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
         for (int j = seq->num_active - 1; j >= 0; j--) {
             event_t *event = seq->active_events[j];
 
-            // Only remove events that are in release phase AND have released to near zero
             if (event->instrument && event->instrument->envelope == adsr_envelope) {
                 adsr_t *adsr = &event->envelope_state.adsr;
 
-                // Remove if in release phase and release has completed
+                // For ADSR: remove when in release phase and envelope has decayed to near zero
                 int32_t samples_until_release = event->release_sample - seq->current_sample_index;
 
-                if (samples_until_release <= 0) {  // In release phase
-                    uint32_t samples_since_release = (uint32_t)(-samples_until_release);
-                    if (samples_since_release >= adsr->release_samples) {  // Release completed
-                        printf("Removing completed ADSR event at sample %lu\n", seq->current_sample_index);
-                        seq->active_events[j] = seq->active_events[seq->num_active - 1];
-                        seq->num_active--;
-                    }
+                if (samples_until_release <= 0 && adsr->current_level == 0) {
+                    // Release phase and exponential decay has reached zero
+                    printf("Removing completed ADSR event at sample %lu\n", seq->current_sample_index);
+                    seq->active_events[j] = seq->active_events[seq->num_active - 1];
+                    seq->num_active--;
                 }
             } else {
                 // For other envelope types, use the threshold method
