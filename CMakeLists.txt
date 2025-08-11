@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.31)
-project(music C)
+project(musicbox C)
 
 set(CMAKE_C_STANDARD 11)
 
@@ -10,7 +10,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 
 # Add executable with all source files
-add_executable(music
+add_executable(musicbox
         array.c
         instrument.c
         main.c
@@ -21,21 +21,21 @@ add_executable(music
 )
 
 # Link libraries and set include directories
-target_link_libraries(music
+target_link_libraries(musicbox
         ${PIPEWIRE_LIBRARIES}
         m  # Math library for sin(), etc.
 )
 
-target_include_directories(music PRIVATE
+target_include_directories(musicbox PRIVATE
         ${PIPEWIRE_INCLUDE_DIRS}
 )
 
-target_compile_options(music PRIVATE
+target_compile_options(musicbox PRIVATE
         ${PIPEWIRE_CFLAGS_OTHER}
 )
 
 # Optional: Enable debug info and warnings
-target_compile_options(music PRIVATE -Wall -Wextra -g)
+target_compile_options(musicbox PRIVATE -Wall -Wextra -g)
 
 # Print configuration info (helpful for debugging)
 message(STATUS "PipeWire found:")

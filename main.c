@@ -10,7 +10,7 @@ int main() {
     // Setup signal handling
     pw_driver_setup_signals();
 
-    // Initialize music system
+    // Initialize musicbox system
     music_init();
 
     const audio_driver_t* driver = &pipewire_driver;
