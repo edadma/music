@@ -49,7 +49,7 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
 
             // Calculate exponential release coefficient
             // Using target ratio of -60dB (0.001) for natural decay
-            double target_ratio = 0.001;  // -60dB
+            double target_ratio = 0.00001;  // -60dB
             uint32_t effective_release_samples = adsr->release_samples;
 
             // Enforce minimum release time to prevent clicks (20ms minimum)
