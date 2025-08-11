@@ -79,8 +79,8 @@ int32_t pluck_envelope(void* state, uint32_t samples_since_start, int32_t sample
 int32_t adsr_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release);
 
 // Helper function to convert parsed notes to sequencer events
-event_array_t notes_to_sequencer_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
-                                        const key_signature_t* key, const temperament_t* temperament, int transposition,
-                                        float volume);
+event_array_t sequence_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
+                              const key_signature_t* key, const temperament_t* temperament, int transposition,
+                              float volume);
 
 #endif // MUSIC_H

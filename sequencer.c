@@ -35,9 +35,9 @@ static bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
 }
 
 // Convert parsed notes to sequencer events with proper fixed-point arithmetic
-event_array_t notes_to_sequencer_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
-                                        const key_signature_t* key, const temperament_t* temperament, int transposition,
-                                        float volume) {
+event_array_t sequence_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
+                              const key_signature_t* key, const temperament_t* temperament, int transposition,
+                              float volume) {
     event_array_t events = {0};
     if (!notes || !notes->data || notes->count == 0) {
         return events;
