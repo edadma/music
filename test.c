@@ -153,9 +153,9 @@ sequencer_state_t* create_complex_test(uint32_t sample_rate) {
     printf("Creating complex test...\n");
 
     // Complex piece with chords, different rhythms, and instrument changes
-    note_array_t notes = parse_music("[pluck sine] c4 d e f <g c' e'>2 " // Melody with chord ending
-                                     "[pluck square] r2 c4 d e f g2 " // Second voice with different instrument
-                                     "c,1 g,,1 <c,, e,, g,, c,>1" // Bass line with final chord
+    note_array_t notes = parse_music( //"[pluck sine] c4 d e f <g c' e'>2 " // Melody with chord ending
+        "r2 c4 d e f g2 " // Second voice with different instrument
+        // "c,1 g,,1 <c,, e,, g,, c,>1" // Bass line with final chord
     );
 
     event_array_t events = sequence_events(&notes, sample_rate, 120, &c_major, &equal_temperament, 0, 0.3f);

@@ -74,7 +74,7 @@ event_array_t sequence_events(const note_array_t* notes, uint16_t sample_rate, i
 
                 // Set up basic event parameters
                 event.start_sample = current_sample;
-                event.duration_samples = (uint32_t)(duration_samples * 0.7); // 70% of written duration
+                event.duration_samples = (uint32_t)(duration_samples * 0.9); // 90% of written duration
                 event.release_sample = current_sample + event.duration_samples;
                 event.num_partials = 1;
                 event.instrument = note->instrument;
