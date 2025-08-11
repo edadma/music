@@ -24,6 +24,116 @@ void music_init(void) {
 // EVENT AND SAMPLE GENERATION
 // ============================================================================
 
+// Convert frequency to phase increment (unsigned for DDS)
+static uint32_t freq_to_phase_increment(double freq, uint16_t sample_rate) {
+    return (uint32_t)((freq / sample_rate) * 0x100000000LL);
+}
+
+// Helper function to check if two notes should be simultaneous (part of same chord)
+static bool notes_are_simultaneous(const note_t* note1, const note_t* note2) {
+    return (note1->chord_id > 0 && note1->chord_id == note2->chord_id);
+}
+
+// Convert parsed notes to sequencer events with proper fixed-point arithmetic
+event_array_t notes_to_sequencer_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
+                                        const key_signature_t* key, const temperament_t* temperament, int transposition,
+                                        float volume) {
+    event_array_t events = {0};
+    if (!notes || !notes->data || notes->count == 0) {
+        return events;
+    }
+
+    // Calculate timing
+    int samples_per_beat = (60 * sample_rate) / tempo_bpm;
+    uint64_t current_sample = 0;
+
+    // Calculate chord volume scaling
+    float base_volume = volume;
+
+    for (int i = 0; i < notes->count; i++) {
+        const note_t* note = &notes->data[i];
+
+        // Calculate duration in samples
+        int duration_samples = (samples_per_beat * 4) / note->value;
+        if (note->dotted) {
+            duration_samples = (duration_samples * 3) / 2;
+        }
+        if (note->tuplet > 0) {
+            float tuplet_ratio = get_tuplet_ratio(note->tuplet);
+            duration_samples = (int)((float)duration_samples * tuplet_ratio);
+        }
+
+        // Only create events for non-rests
+        if (!is_rest(note)) {
+            // Calculate frequency
+            double freq = note_to_frequency(note, temperament, key, transposition);
+
+            if (freq > 0.0) {
+                // Allocate event with one partial (can be extended for additive synthesis later)
+                event_t event = {0};
+
+                // Set up basic event parameters
+                event.start_sample = current_sample;
+                event.duration_samples = (uint32_t)(duration_samples * 0.7); // 70% of written duration
+                event.release_sample = current_sample + event.duration_samples;
+                event.num_partials = 1;
+                event.instrument = note->instrument;
+
+                // Volume scaling for chords
+                float event_volume = base_volume;
+                if (note->chord_id > 0) {
+                    // Count chord size for volume scaling
+                    int chord_size = 1;
+                    for (int j = 0; j < notes->count; j++) {
+                        if (j != i && notes->data[j].chord_id == note->chord_id) {
+                            chord_size++;
+                        }
+                    }
+                    event_volume = base_volume / sqrtf((float)chord_size);
+                }
+                event.volume_scale = (int32_t)(event_volume * 0x10000000); // Convert to Q1.31
+
+                // Setup single partial (fundamental frequency)
+                event.partials[0].phase_accum = 0;
+                event.partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
+                event.partials[0].amplitude = 0x7FFFFFFF; // Full amplitude for this partial
+
+                // Setup ADSR envelope (keyboard-like with anti-click release)
+                event.envelope_state.adsr.attack_samples = (uint32_t)(sample_rate * 0.05f); // 50ms attack
+                event.envelope_state.adsr.decay_samples = (uint32_t)(sample_rate * 0.2f); // 200ms decay
+                event.envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF); // 60% sustain
+                event.envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.5f); // 500ms release
+                event.envelope_state.adsr.min_release_samples = (uint32_t)(sample_rate * 0.02f); // 20ms minimum
+                event.envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;
+                event.envelope_state.adsr.release_start_level = 0;
+                event.envelope_state.adsr.release_coeff = 0;
+                event.envelope_state.adsr.phase = ADSR_ATTACK;
+
+                // Add to events array (we'll need to implement this push function)
+                event_array_push(&events, event);
+            }
+        }
+
+        // Advance time logic - only if not part of a simultaneous chord
+        bool advance_time = true;
+        if (i + 1 < notes->count) {
+            advance_time = !notes_are_simultaneous(note, &notes->data[i + 1]);
+        }
+        if (is_rest(note)) {
+            advance_time = true;
+        }
+        if (advance_time) {
+            current_sample += duration_samples;
+        }
+    }
+
+    // Shrink array to fit for memory efficiency
+    event_array_shrink_to_fit(&events);
+
+    printf("Converted %d notes to %d events\n", notes->count, events.count);
+    return events;
+}
+
 int16_t generate_event_sample(event_t* event, uint32_t current_sample_index) {
     uint32_t samples_since_start = current_sample_index - event->start_sample;
     uint32_t samples_until_release = event->release_sample - current_sample_index;
@@ -147,7 +257,7 @@ bool sequencer_callback(int16_t* buffer, size_t num_samples, void* user_data) {
     return true; // Continue playback
 }
 
-void cleanup_song(sequencer_state_t* seq) {
+void cleanup_sequencer_state(sequencer_state_t* seq) {
     if (!seq)
         return;
 

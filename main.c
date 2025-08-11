@@ -37,7 +37,7 @@ int main() {
     driver->stop(audio_ctx);
 
     // Clean up
-    cleanup_song(song);
+    cleanup_sequencer_state(song);
     driver->cleanup(audio_ctx);
     printf("Test complete.\n");
 

@@ -72,10 +72,15 @@ int32_t get_current_envelope_level(event_t* event);
 bool sequencer_callback(int16_t* buffer, size_t num_samples, void* user_data);
 
 // Clean up sequencer state
-void cleanup_song(sequencer_state_t* seq);
+void cleanup_sequencer_state(sequencer_state_t* seq);
 
 // Envelope functions
 int32_t pluck_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release);
 int32_t adsr_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release);
+
+// Helper function to convert parsed notes to sequencer events
+event_array_t notes_to_sequencer_events(const note_array_t* notes, uint16_t sample_rate, int tempo_bpm,
+                                        const key_signature_t* key, const temperament_t* temperament, int transposition,
+                                        float volume);
 
 #endif // MUSIC_H
