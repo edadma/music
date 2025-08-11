@@ -163,20 +163,20 @@ bool sequencer_callback(int16_t* buffer, size_t num_samples, void* user_data) {
 
     for (size_t i = 0; i < num_samples; i++) {
         // 1. Activate new events that should start now
-        while (seq->next_event_index < seq->num_events &&
-               seq->events[seq->next_event_index]->start_sample <= seq->current_sample_index) {
+        while (seq->next_event_index < seq->events.count &&
+               seq->events.data[seq->next_event_index].start_sample <= seq->current_sample_index) {
 
             if (seq->num_active < MAX_SIMULTANEOUS_EVENTS) {
-                seq->active_events[seq->num_active] = seq->events[seq->next_event_index];
+                seq->active_events[seq->num_active] = &seq->events.data[seq->next_event_index];
                 seq->num_active++;
-                printf("Activated event %zu at sample %lu\n", seq->next_event_index, seq->current_sample_index);
+                printf("Activated event %d at sample %lu\n", seq->next_event_index, seq->current_sample_index);
             }
             seq->next_event_index++;
         }
 
         // 2. Generate sample from all active events (this updates envelopes)
         int32_t mixed_sample = 0;
-        for (size_t j = 0; j < seq->num_active; j++) {
+        for (int j = 0; j < seq->num_active; j++) {
             mixed_sample += generate_event_sample(seq->active_events[j], seq->current_sample_index);
         }
 
