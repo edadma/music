@@ -1,7 +1,7 @@
 #ifndef TEST_H
 #define TEST_H
 
-#include "music.h"
+#include "sequencer.h"
 
 // Create a simple test event with ADSR envelope
 event_t* create_simple_event(uint32_t start_sample, float freq, float duration_sec, uint32_t sample_rate);

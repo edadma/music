@@ -1,8 +1,7 @@
-#include "music.h"
-#include <stdlib.h>
-#include <stdio.h>
+#include "sequencer.h"
 #include <math.h>
-#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // ============================================================================
 // GLOBAL SINE TABLE AND UTILITIES
@@ -22,11 +21,11 @@ void music_init(void) {
 // ENVELOPE FUNCTIONS
 // ============================================================================
 
-int32_t pluck_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release) {
-    (void)samples_since_start;    // Unused for this envelope type
-    (void)samples_until_release;  // Unused for this envelope type
+int32_t pluck_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release) {
+    (void)samples_since_start; // Unused for this envelope type
+    (void)samples_until_release; // Unused for this envelope type
 
-    pluck_decay_t *pluck = (pluck_decay_t*)state;
+    pluck_decay_t* pluck = (pluck_decay_t*)state;
 
     // Exponential decay: current_level *= decay_multiplier
     // Q1.31 * Q1.31 = Q2.62, shift back to Q1.31
@@ -36,8 +35,9 @@ int32_t pluck_envelope(void *state, uint32_t samples_since_start, int32_t sample
     return pluck->current_level;
 }
 
-int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples_until_release) {
-    adsr_t *adsr = (adsr_t*)state;
+
+int32_t adsr_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release) {
+    adsr_t* adsr = (adsr_t*)state;
 
     // Determine current phase based on timing
     if (samples_until_release <= 0) {
@@ -49,7 +49,7 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
 
             // Calculate exponential release coefficient
             // Using target ratio of -60dB (0.001) for natural decay
-            double target_ratio = 0.00001;  // -60dB
+            double target_ratio = 0.00001; // -60dB
             uint32_t effective_release_samples = adsr->release_samples;
 
             // Enforce minimum release time to prevent clicks (20ms minimum)
@@ -60,7 +60,7 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
             // RC-circuit inspired exponential coefficient
             // rate = exp(-log((1 + targetRatio) / targetRatio) / time)
             double rate = exp(-log((1.0 + target_ratio) / target_ratio) / effective_release_samples);
-            adsr->release_coeff = (int32_t)(rate * 0x7FFFFFFF);  // Convert to Q1.31
+            adsr->release_coeff = (int32_t)(rate * 0x7FFFFFFF); // Convert to Q1.31
         }
 
         // Exponential decay using iterative multiplication
@@ -71,15 +71,13 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
         if (adsr->current_level < AUDIBLE_THRESHOLD / 4) {
             adsr->current_level = 0;
         }
-    }
-    else if (samples_since_start < adsr->attack_samples) {
+    } else if (samples_since_start < adsr->attack_samples) {
         // Attack phase - ramp from AUDIBLE_THRESHOLD to full scale
         adsr->phase = ADSR_ATTACK;
         int32_t attack_range = 0x7FFFFFFF - AUDIBLE_THRESHOLD;
         int32_t attack_progress = ((int64_t)samples_since_start * attack_range) / adsr->attack_samples;
         adsr->current_level = AUDIBLE_THRESHOLD + attack_progress;
-    }
-    else if (samples_since_start < adsr->attack_samples + adsr->decay_samples) {
+    } else if (samples_since_start < adsr->attack_samples + adsr->decay_samples) {
         // Decay phase
         adsr->phase = ADSR_DECAY;
         // Linear ramp from full scale to sustain_level over decay_samples
@@ -87,8 +85,7 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
         int32_t decay_range = 0x7FFFFFFF - adsr->sustain_level;
         int32_t decay_amount = ((int64_t)decay_progress * decay_range) / adsr->decay_samples;
         adsr->current_level = 0x7FFFFFFF - decay_amount;
-    }
-    else {
+    } else {
         // Sustain phase
         adsr->phase = ADSR_SUSTAIN;
         adsr->current_level = adsr->sustain_level;
@@ -101,15 +98,15 @@ int32_t adsr_envelope(void *state, uint32_t samples_since_start, int32_t samples
 // EVENT AND SAMPLE GENERATION
 // ============================================================================
 
-int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
+int16_t generate_event_sample(event_t* event, uint64_t current_sample_index) {
     uint32_t samples_since_start = current_sample_index - event->start_sample;
     int32_t samples_until_release = event->release_sample - current_sample_index;
 
     // Get envelope level using the instrument's envelope function
     int32_t envelope_level;
     if (event->instrument && event->instrument->envelope) {
-        envelope_level = event->instrument->envelope(&event->envelope_state,
-                                                   samples_since_start, samples_until_release);
+        envelope_level =
+            event->instrument->envelope(&event->envelope_state, samples_since_start, samples_until_release);
     } else {
         // Fallback to full volume if no envelope function
         envelope_level = 0x7FFFFFFF;
@@ -118,7 +115,7 @@ int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     // Generate samples from all partials
     int32_t event_sample = 0;
     for (int i = 0; i < event->num_partials; i++) {
-        partial_t *p = &event->partials[i];
+        partial_t* p = &event->partials[i];
 
         // Get sine wave sample using proper DDS lookup
         uint32_t table_index = (p->phase_accum >> 22) & (SINE_TABLE_SIZE - 1);
@@ -144,7 +141,7 @@ int16_t generate_event_sample(event_t *event, uint64_t current_sample_index) {
     return (int16_t)(final_sample >> 16);
 }
 
-int32_t get_current_envelope_level(event_t *event) {
+int32_t get_current_envelope_level(event_t* event) {
     // Return the current envelope level based on envelope type
     // We can determine type by checking which envelope function is assigned
     if (event->instrument && event->instrument->envelope == adsr_envelope) {
@@ -161,8 +158,8 @@ int32_t get_current_envelope_level(event_t *event) {
 // SEQUENCER CALLBACK
 // ============================================================================
 
-bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
-    sequencer_state_t *seq = (sequencer_state_t*)user_data;
+bool sequencer_callback(int16_t* buffer, size_t num_samples, void* user_data) {
+    sequencer_state_t* seq = (sequencer_state_t*)user_data;
 
     for (size_t i = 0; i < num_samples; i++) {
         // 1. Activate new events that should start now
@@ -187,10 +184,10 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
 
         // 3. Remove events that have completed their release phase (backwards iteration for safe removal)
         for (int j = seq->num_active - 1; j >= 0; j--) {
-            event_t *event = seq->active_events[j];
+            event_t* event = seq->active_events[j];
 
             if (event->instrument && event->instrument->envelope == adsr_envelope) {
-                adsr_t *adsr = &event->envelope_state.adsr;
+                adsr_t* adsr = &event->envelope_state.adsr;
 
                 // For ADSR: remove when in release phase and envelope has decayed to near zero
                 int32_t samples_until_release = event->release_sample - seq->current_sample_index;
@@ -218,14 +215,15 @@ bool sequencer_callback(int16_t *buffer, size_t num_samples, void *user_data) {
     if (seq->num_active == 0 && seq->next_event_index >= seq->num_events) {
         printf("Song complete, marking as finished\n");
         seq->completed = true;
-        return false;  // Tell audio driver to stop calling us
+        return false; // Tell audio driver to stop calling us
     }
 
-    return true;  // Continue playback
+    return true; // Continue playback
 }
 
-void cleanup_song(sequencer_state_t *seq) {
-    if (!seq) return;
+void cleanup_song(sequencer_state_t* seq) {
+    if (!seq)
+        return;
 
     for (size_t i = 0; i < seq->num_events; i++) {
         free(seq->events[i]);

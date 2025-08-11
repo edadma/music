@@ -12,7 +12,7 @@ pkg_check_modules(PIPEWIRE REQUIRED libpipewire-0.3)
 # Add executable with all source files
 add_executable(music
         main.c
-        music.c
+        sequencer.c
         pw_driver.c
         test.c
 )

@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "audio_driver.h"
 #include "pw_driver.h"
-#include "music.h"
+#include "sequencer.h"
 #include "test.h"
 
 int main() {
@@ -13,18 +13,18 @@ int main() {
     // Initialize music system
     music_init();
 
-    const audio_driver_t *driver = &pipewire_driver;
+    const audio_driver_t* driver = &pipewire_driver;
     int error;
 
     // Initialize audio system
-    void *audio_ctx = driver->init(44100, sequencer_callback, &error);
+    void* audio_ctx = driver->init(44100, sequencer_callback, &error);
     if (!audio_ctx) {
         printf("Failed to initialize audio: %s\n", driver->strerror(error));
         return 1;
     }
 
     // Create test song and start playback
-    sequencer_state_t *song = create_test_song(44100);
+    sequencer_state_t* song = create_test_song(44100);
     driver->play(audio_ctx, song);
 
     printf("Playing test song. Press Ctrl+C to stop.\n");
@@ -40,6 +40,6 @@ int main() {
     cleanup_song(song);
     driver->cleanup(audio_ctx);
     printf("Test complete.\n");
-    
+
     return 0;
 }
