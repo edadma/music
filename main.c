@@ -24,7 +24,7 @@ int main() {
     }
 
     // Create test song and start playback
-    sequencer_state_t* song = create_simple_melody_test(44100);
+    sequencer_state_t* song = create_complex_test(44100);
     driver->play(audio_ctx, song);
 
     printf("Playing test song. Press Ctrl+C to stop.\n");

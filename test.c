@@ -14,7 +14,7 @@ sequencer_state_t* create_simple_melody_test(uint32_t sample_rate) {
     note_array_t notes = parse_music("c4 d e f g a b c'2");
 
     // Convert to events
-    event_array_t events = sequence_events(&notes, sample_rate, 120, &c_major, &equal_temperament, 0, 0.3f);
+    event_array_t events = sequence_events(&notes, sample_rate, 120, &c_major, &equal_temperament, 0, 0.9f);
 
     // Create sequencer state
     sequencer_state_t* seq = calloc(1, sizeof(sequencer_state_t));
@@ -47,9 +47,9 @@ sequencer_state_t* create_chord_test(uint32_t sample_rate) {
     printf("Creating chord test...\n");
 
     // Parse chord progression: C major -> F major -> G major -> C major
-    note_array_t notes = parse_music("<c e g>2 <f a c'>2 <g b d'>2 <c e g c'>1");
+    note_array_t notes = parse_music("<c e g>2 <f a c'>2 <g b d'>2 <c' e' g' c''>1");
 
-    event_array_t events = sequence_events(&notes, sample_rate, 100, &c_major, &equal_temperament, 0, 0.4f);
+    event_array_t events = sequence_events(&notes, sample_rate, 100, &c_major, &equal_temperament, 0, 0.9f);
 
     sequencer_state_t* seq = calloc(1, sizeof(sequencer_state_t));
     seq->events = events;
@@ -101,8 +101,8 @@ sequencer_state_t* create_multi_voice_test(uint32_t sample_rate) {
     note_array_t voice2 = parse_music("r2 c4 d e f g a g f e f d e c2");
 
     // Convert both voices
-    event_array_t events1 = sequence_events(&voice1, sample_rate, 140, &c_major, &equal_temperament, 0, 0.25f);
-    event_array_t events2 = sequence_events(&voice2, sample_rate, 140, &c_major, &equal_temperament, 0, 0.25f);
+    event_array_t events1 = sequence_events(&voice1, sample_rate, 140, &c_major, &equal_temperament, 0, 0.4f);
+    event_array_t events2 = sequence_events(&voice2, sample_rate, 140, &c_major, &equal_temperament, 0, 0.4f);
 
     // Merge events (we'll need to implement this)
     event_array_t merged_events = {0};

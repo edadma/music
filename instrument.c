@@ -100,7 +100,7 @@ const instrument_t pluck_sine_instrument = {.envelope = adsr_envelope, // Use AD
                                             .harmonic_ratios = {1.0f},
                                             .partial_amplitudes = {1.0f}};
 
-const instrument_t pluck_square_instrument = {.envelope = adsr_envelope, // Use ADSR for consistent behavior
+const instrument_t pluck_square_instrument = {.envelope = pluck_envelope,
                                               .num_partials = 3, // Add some harmonics for square wave character
                                               .harmonic_ratios = {1.0f, 3.0f, 5.0f},
                                               .partial_amplitudes = {1.0f, 0.333f, 0.2f}};
@@ -114,11 +114,7 @@ static const struct {
     const char* name;
     const instrument_t* instrument;
 } available_instruments[] = {
-    {"pluck sine", &pluck_sine_instrument},
-    {"pluck square", &pluck_square_instrument},
-    {"sine", &pluck_sine_instrument}, // Alias
-    {"square", &pluck_square_instrument}, // Alias
-    {NULL, NULL} // Sentinel
+    {"pluck sine", &pluck_sine_instrument}, {"pluck square", &pluck_square_instrument}, {NULL, NULL} // Sentinel
 };
 
 const instrument_t* lookup_instrument(const char* name) {

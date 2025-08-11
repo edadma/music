@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include "instrument.h"
 #include "parser.h"
 
 // ============================================================================
@@ -15,8 +16,6 @@ typedef struct {
     uint32_t phase_increment; // Unsigned phase increment per sample
     int32_t amplitude; // Q1.31 amplitude for this partial
 } partial_t;
-
-#define MAX_PARTIALS 8
 
 typedef struct {
     // === Timing (immutable) ===

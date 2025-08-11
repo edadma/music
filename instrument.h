@@ -52,12 +52,14 @@ typedef union envelope_state {
 #define ADSR_SUSTAIN 2
 #define ADSR_RELEASE 3
 
-// Complete instrument definition with function pointers
+#define MAX_PARTIALS 8
+
+// Iinstrument definition with function pointers
 typedef struct {
     int32_t (*envelope)(void* envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
     uint8_t num_partials;
-    float harmonic_ratios[8]; // For setup time
-    float partial_amplitudes[8]; // For setup time
+    float harmonic_ratios[MAX_PARTIALS]; // For setup time
+    float partial_amplitudes[MAX_PARTIALS]; // For setup time
 } instrument_t;
 
 // ============================================================================
