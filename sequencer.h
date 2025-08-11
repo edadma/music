@@ -16,6 +16,8 @@ typedef struct {
     int32_t amplitude; // Q1.31 amplitude for this partial
 } partial_t;
 
+#define MAX_PARTIALS 8
+
 typedef struct {
     // === Timing (immutable) ===
     uint32_t start_sample;
@@ -34,7 +36,7 @@ typedef struct {
 
     // === Variable Partial Data ===
     uint8_t num_partials;
-    partial_t partials[];
+    partial_t partials[MAX_PARTIALS];
 } event_t;
 
 DEFINE_ARRAY_TYPE(event, event_t)
@@ -61,7 +63,7 @@ typedef struct {
 void music_init(void);
 
 // Generate one sample from an event
-int16_t generate_event_sample(event_t* event, uint64_t current_sample_index);
+int16_t generate_event_sample(event_t* event, uint32_t current_sample_index);
 
 // Get current envelope level for threshold checking
 int32_t get_current_envelope_level(event_t* event);

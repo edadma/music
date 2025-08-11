@@ -10,9 +10,6 @@
 // Forward declaration for envelope state union
 typedef union envelope_state envelope_state_t;
 
-// Envelope function type - returns Q1.31 amplitude value
-typedef int32_t (*envelope_fn_t)(void* envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
-
 // Exponential decay envelope state
 typedef struct {
     int32_t initial_amplitude; // Q1.31
@@ -55,11 +52,9 @@ typedef union envelope_state {
 #define ADSR_SUSTAIN 2
 #define ADSR_RELEASE 3
 
-typedef int32_t (*envelope_fn_t)(void* envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
-
 // Complete instrument definition with function pointers
 typedef struct {
-    envelope_fn_t envelope;
+    int32_t (*envelope)(void* envelope_state, uint32_t samples_since_start, int32_t samples_until_release);
     uint8_t num_partials;
     float harmonic_ratios[8]; // For setup time
     float partial_amplitudes[8]; // For setup time

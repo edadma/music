@@ -52,16 +52,14 @@ event_array_t notes_to_sequencer_events(const note_array_t* notes, uint32_t samp
 
             if (freq > 0.0) {
                 // Allocate event with one partial (can be extended for additive synthesis later)
-                event_t* event = malloc(sizeof(event_t) + sizeof(partial_t));
-                if (!event)
-                    continue;
+                event_t event = {0};
 
                 // Set up basic event parameters
-                event->start_sample = current_sample;
-                event->duration_samples = (uint32_t)(duration_samples * 0.7); // 70% of written duration
-                event->release_sample = current_sample + event->duration_samples;
-                event->num_partials = 1;
-                event->instrument = note->instrument;
+                event.start_sample = current_sample;
+                event.duration_samples = (uint32_t)(duration_samples * 0.7); // 70% of written duration
+                event.release_sample = current_sample + event.duration_samples;
+                event.num_partials = 1;
+                event.instrument = note->instrument;
 
                 // Volume scaling for chords
                 float event_volume = base_volume;
@@ -75,23 +73,23 @@ event_array_t notes_to_sequencer_events(const note_array_t* notes, uint32_t samp
                     }
                     event_volume = base_volume / sqrtf((float)chord_size);
                 }
-                event->volume_scale = (int32_t)(event_volume * 0x10000000); // Convert to Q1.31
+                event.volume_scale = (int32_t)(event_volume * 0x10000000); // Convert to Q1.31
 
                 // Setup single partial (fundamental frequency)
-                event->partials[0].phase_accum = 0;
-                event->partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
-                event->partials[0].amplitude = 0x7FFFFFFF; // Full amplitude for this partial
+                event.partials[0].phase_accum = 0;
+                event.partials[0].phase_increment = freq_to_phase_increment(freq, sample_rate);
+                event.partials[0].amplitude = 0x7FFFFFFF; // Full amplitude for this partial
 
                 // Setup ADSR envelope (keyboard-like with anti-click release)
-                event->envelope_state.adsr.attack_samples = (uint32_t)(sample_rate * 0.05f); // 50ms attack
-                event->envelope_state.adsr.decay_samples = (uint32_t)(sample_rate * 0.2f); // 200ms decay
-                event->envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF); // 60% sustain
-                event->envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.5f); // 500ms release
-                event->envelope_state.adsr.min_release_samples = (uint32_t)(sample_rate * 0.02f); // 20ms minimum
-                event->envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;
-                event->envelope_state.adsr.release_start_level = 0;
-                event->envelope_state.adsr.release_coeff = 0;
-                event->envelope_state.adsr.phase = ADSR_ATTACK;
+                event.envelope_state.adsr.attack_samples = (uint32_t)(sample_rate * 0.05f); // 50ms attack
+                event.envelope_state.adsr.decay_samples = (uint32_t)(sample_rate * 0.2f); // 200ms decay
+                event.envelope_state.adsr.sustain_level = (int32_t)(0.6f * 0x7FFFFFFF); // 60% sustain
+                event.envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.5f); // 500ms release
+                event.envelope_state.adsr.min_release_samples = (uint32_t)(sample_rate * 0.02f); // 20ms minimum
+                event.envelope_state.adsr.current_level = AUDIBLE_THRESHOLD;
+                event.envelope_state.adsr.release_start_level = 0;
+                event.envelope_state.adsr.release_coeff = 0;
+                event.envelope_state.adsr.phase = ADSR_ATTACK;
 
                 // Add to events array (we'll need to implement this push function)
                 event_array_push(&events, event);
@@ -140,7 +138,7 @@ sequencer_state_t* create_simple_melody_test(uint32_t sample_rate) {
     // Calculate total duration
     uint64_t max_end = 0;
     for (int i = 0; i < events.count; i++) {
-        event_t* event = events.data[i];
+        event_t* event = &events.data[i];
         uint64_t event_end = event->start_sample + event->duration_samples + event->envelope_state.adsr.release_samples;
         if (event_end > max_end) {
             max_end = event_end;
@@ -174,7 +172,7 @@ sequencer_state_t* create_chord_test(uint32_t sample_rate) {
     // Calculate total duration
     uint64_t max_end = 0;
     for (int i = 0; i < events.count; i++) {
-        event_t* event = events.data[i];
+        event_t* event = &events.data[i];
         uint64_t event_end = event->start_sample + event->duration_samples + event->envelope_state.adsr.release_samples;
         if (event_end > max_end) {
             max_end = event_end;
@@ -187,6 +185,20 @@ sequencer_state_t* create_chord_test(uint32_t sample_rate) {
 
     return seq;
 }
+
+
+// Comparison function for qsort
+static int compare_events_by_start_time(const void* a, const void* b) {
+    const event_t* event_a = (const event_t*)a;
+    const event_t* event_b = (const event_t*)b;
+
+    if (event_a->start_sample < event_b->start_sample)
+        return -1;
+    if (event_a->start_sample > event_b->start_sample)
+        return 1;
+    return 0;
+}
+
 
 // Create multi-voice test (simple canon)
 sequencer_state_t* create_multi_voice_test(uint32_t sample_rate) {
@@ -215,16 +227,8 @@ sequencer_state_t* create_multi_voice_test(uint32_t sample_rate) {
         event_array_push(&merged_events, events2.data[i]);
     }
 
-    // Sort by start time (simple bubble sort for now)
-    for (int i = 0; i < merged_events.count - 1; i++) {
-        for (int j = 0; j < merged_events.count - i - 1; j++) {
-            if (merged_events.data[j]->start_sample > merged_events.data[j + 1]->start_sample) {
-                event_t* temp = merged_events.data[j];
-                merged_events.data[j] = merged_events.data[j + 1];
-                merged_events.data[j + 1] = temp;
-            }
-        }
-    }
+    // Sort by start time
+    qsort(merged_events.data, merged_events.count, sizeof(event_t), compare_events_by_start_time);
 
     sequencer_state_t* seq = calloc(1, sizeof(sequencer_state_t));
     seq->events = merged_events;
@@ -237,7 +241,7 @@ sequencer_state_t* create_multi_voice_test(uint32_t sample_rate) {
     // Calculate total duration
     uint64_t max_end = 0;
     for (int i = 0; i < merged_events.count; i++) {
-        event_t* event = merged_events.data[i];
+        event_t* event = &merged_events.data[i];
         uint64_t event_end = event->start_sample + event->duration_samples + event->envelope_state.adsr.release_samples;
         if (event_end > max_end) {
             max_end = event_end;
@@ -279,8 +283,9 @@ sequencer_state_t* create_complex_test(uint32_t sample_rate) {
     // Calculate total duration
     uint64_t max_end = 0;
     for (int i = 0; i < events.count; i++) {
-        event_t* event = events.data[i];
+        event_t* event = &events.data[i];
         uint64_t event_end = event->start_sample + event->duration_samples + event->envelope_state.adsr.release_samples;
+
         if (event_end > max_end) {
             max_end = event_end;
         }
@@ -297,11 +302,6 @@ sequencer_state_t* create_complex_test(uint32_t sample_rate) {
 void cleanup_sequencer_state(sequencer_state_t* seq) {
     if (!seq)
         return;
-
-    // Free all individual event structures
-    for (int i = 0; i < seq->events.count; i++) {
-        free(seq->events.data[i]);
-    }
 
     // Free the events array
     event_array_free(&seq->events);

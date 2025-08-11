@@ -21,89 +21,12 @@ void music_init(void) {
 }
 
 // ============================================================================
-// ENVELOPE FUNCTIONS
-// ============================================================================
-
-int32_t pluck_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release) {
-    (void)samples_since_start; // Unused for this envelope type
-    (void)samples_until_release; // Unused for this envelope type
-
-    pluck_decay_t* pluck = (pluck_decay_t*)state;
-
-    // Exponential decay: current_level *= decay_multiplier
-    // Q1.31 * Q1.31 = Q2.62, shift back to Q1.31
-    int64_t temp = (int64_t)pluck->current_level * pluck->decay_multiplier;
-    pluck->current_level = (int32_t)(temp >> 31);
-
-    return pluck->current_level;
-}
-
-
-int32_t adsr_envelope(void* state, uint32_t samples_since_start, int32_t samples_until_release) {
-    adsr_t* adsr = (adsr_t*)state;
-
-    // Determine current phase based on timing
-    if (samples_until_release <= 0) {
-        // Release phase
-        if (adsr->phase != ADSR_RELEASE) {
-            // First time entering release - setup exponential release
-            adsr->release_start_level = adsr->current_level;
-            adsr->phase = ADSR_RELEASE;
-
-            // Calculate exponential release coefficient
-            // Using target ratio of -60dB (0.001) for natural decay
-            double target_ratio = 0.00001; // -60dB
-            uint32_t effective_release_samples = adsr->release_samples;
-
-            // Enforce minimum release time to prevent clicks (20ms minimum)
-            if (effective_release_samples < adsr->min_release_samples) {
-                effective_release_samples = adsr->min_release_samples;
-            }
-
-            // RC-circuit inspired exponential coefficient
-            // rate = exp(-log((1 + targetRatio) / targetRatio) / time)
-            double rate = exp(-log((1.0 + target_ratio) / target_ratio) / effective_release_samples);
-            adsr->release_coeff = (int32_t)(rate * 0x7FFFFFFF); // Convert to Q1.31
-        }
-
-        // Exponential decay using iterative multiplication
-        int64_t temp = (int64_t)adsr->current_level * adsr->release_coeff;
-        adsr->current_level = (int32_t)(temp >> 31);
-
-        // Clamp to zero when it gets very small (prevents denormals and infinite decay)
-        if (adsr->current_level < AUDIBLE_THRESHOLD / 4) {
-            adsr->current_level = 0;
-        }
-    } else if (samples_since_start < adsr->attack_samples) {
-        // Attack phase - ramp from AUDIBLE_THRESHOLD to full scale
-        adsr->phase = ADSR_ATTACK;
-        int32_t attack_range = 0x7FFFFFFF - AUDIBLE_THRESHOLD;
-        int32_t attack_progress = ((int64_t)samples_since_start * attack_range) / adsr->attack_samples;
-        adsr->current_level = AUDIBLE_THRESHOLD + attack_progress;
-    } else if (samples_since_start < adsr->attack_samples + adsr->decay_samples) {
-        // Decay phase
-        adsr->phase = ADSR_DECAY;
-        // Linear ramp from full scale to sustain_level over decay_samples
-        uint32_t decay_progress = samples_since_start - adsr->attack_samples;
-        int32_t decay_range = 0x7FFFFFFF - adsr->sustain_level;
-        int32_t decay_amount = ((int64_t)decay_progress * decay_range) / adsr->decay_samples;
-        adsr->current_level = 0x7FFFFFFF - decay_amount;
-    } else {
-        // Sustain phase
-        adsr->phase = ADSR_SUSTAIN;
-        adsr->current_level = adsr->sustain_level;
-    }
-
-    return adsr->current_level;
-}
-
-// ============================================================================
 // EVENT AND SAMPLE GENERATION
 // ============================================================================
 
-int16_t generate_event_sample(event_t* event, uint64_t current_sample_index) {
+int16_t generate_event_sample(event_t* event, uint32_t current_sample_index) {
     uint32_t samples_since_start = current_sample_index - event->start_sample;
-    int32_t samples_until_release = event->release_sample - current_sample_index;
+    uint32_t samples_until_release = event->release_sample - current_sample_index;
 
     // Get envelope level using the instrument's envelope function
     int32_t envelope_level;
@@ -228,6 +151,6 @@ void cleanup_song(sequencer_state_t* seq) {
     if (!seq)
         return;
 
-    free_event_array(seq->events);
+    event_array_free(&seq->events);
     free(seq);
 }
