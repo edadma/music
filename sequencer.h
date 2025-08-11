@@ -44,7 +44,6 @@ DEFINE_ARRAY_TYPE(event, event_t)
 
 typedef struct {
     event_array_t events;
-    int num_events;
     uint32_t sample_rate;
     uint64_t current_sample_index;
     uint64_t total_duration_samples; // Total song length

@@ -2,6 +2,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "array.h"
+
+DEFINE_ARRAY_FUNCTIONS(event, event_t)
 
 // ============================================================================
 // GLOBAL SINE TABLE AND UTILITIES
@@ -212,7 +215,7 @@ bool sequencer_callback(int16_t* buffer, size_t num_samples, void* user_data) {
     }
 
     // Check if song is complete
-    if (seq->num_active == 0 && seq->next_event_index >= seq->num_events) {
+    if (seq->num_active == 0 && seq->next_event_index >= seq->events.count) {
         printf("Song complete, marking as finished\n");
         seq->completed = true;
         return false; // Tell audio driver to stop calling us
@@ -225,9 +228,6 @@ void cleanup_song(sequencer_state_t* seq) {
     if (!seq)
         return;
 
-    for (size_t i = 0; i < seq->num_events; i++) {
-        free(seq->events[i]);
-    }
-    free(seq->events);
+    free_event_array(seq->events);
     free(seq);
 }
