@@ -47,7 +47,7 @@ event_t* create_simple_event(uint32_t start_sample, float freq, float duration_s
     return event;
 }
 
-// Create ADSR test song with anti-click release
+// Create simultaneous notes test song
 sequencer_state_t* create_test_song(uint32_t sample_rate) {
     sequencer_state_t *seq = calloc(1, sizeof(sequencer_state_t));
     seq->sample_rate = sample_rate;
@@ -56,33 +56,55 @@ sequencer_state_t* create_test_song(uint32_t sample_rate) {
     seq->num_active = 0;
     seq->completed = false;
 
-    // Create 4 test events with gaps (rests) between them
-    seq->num_events = 4;
+    // Create test with simultaneous and overlapping notes
+    seq->num_events = 8;
     seq->events = malloc(seq->num_events * sizeof(event_t*));
 
-    // Event 0: C4 (261.63 Hz) at start, 1 second duration - normal release
-    seq->events[0] = create_simple_event(0, 261.63f, 1.0f, sample_rate);
+    // === Test 1: Simple chord (C major triad) - simultaneous start ===
+    // All three notes start at the same time
+    seq->events[0] = create_simple_event(0, 261.63f, 2.0f, sample_rate);  // C4
+    seq->events[1] = create_simple_event(0, 329.63f, 2.0f, sample_rate);  // E4
+    seq->events[2] = create_simple_event(0, 392.00f, 2.0f, sample_rate);  // G4
 
-    // Event 1: E4 (329.63 Hz) after 0.5 second gap, 1 second duration - fast release test
-    seq->events[1] = create_simple_event(sample_rate * 1.5f, 329.63f, 1.0f, sample_rate);
-    // Override with very fast release to test click prevention
-    seq->events[1]->envelope_state.adsr.release_samples = (uint32_t)(sample_rate * 0.005f); // 5ms release
+    // Adjust volume for chord (1/sqrt(3) ≈ 0.577)
+    int32_t chord_volume = (int32_t)(0.577f * 0x10000000);  // Scaled down from normal volume
+    seq->events[0]->volume_scale = chord_volume;
+    seq->events[1]->volume_scale = chord_volume;
+    seq->events[2]->volume_scale = chord_volume;
 
-    // Event 2: G4 (392.00 Hz) after 0.5 second gap, 1.5 second duration - normal release
-    seq->events[2] = create_simple_event(sample_rate * 3.0f, 392.00f, 1.5f, sample_rate);
+    // === Test 2: Overlapping melody notes - staggered start ===
+    uint32_t melody_start = sample_rate * 3.0f;  // Start after chord
 
-    // Event 3: C5 (523.25 Hz) after 1 second gap, 2 second duration - normal release
-    seq->events[3] = create_simple_event(sample_rate * 5.5f, 523.25f, 2.0f, sample_rate);
+    // First melody note: A4 - starts at 3s, lasts 1.5s
+    seq->events[3] = create_simple_event(melody_start, 440.0f, 1.5f, sample_rate);
 
-    // Calculate total song duration (last event start + duration + some decay time)
-    seq->total_duration_samples = sample_rate * 5.5f + sample_rate * 2.0f + sample_rate * 1.0f; // Less extra time for exponential decay
+    // Second melody note: F4 - starts at 4s (overlaps with A4), lasts 1.5s
+    seq->events[4] = create_simple_event(melody_start + sample_rate * 1.0f, 349.23f, 1.5f, sample_rate);
 
-    printf("Created anti-click ADSR test song with %zu events\n", seq->num_events);
-    printf("Event 0: C4 at sample 0 (normal 500ms exponential release)\n");
-    printf("Event 1: E4 at sample %u (fast 5ms release -> extended to 20ms minimum)\n", (uint32_t)(sample_rate * 1.5f));
-    printf("Event 2: G4 at sample %u (normal 500ms exponential release)\n", (uint32_t)(sample_rate * 3.0f));
-    printf("Event 3: C5 at sample %u (normal 500ms exponential release)\n", (uint32_t)(sample_rate * 5.5f));
-    printf("Expected: Smooth exponential release with no clicks, even on fast release note\n");
+    // Third melody note: D4 - starts at 5s (overlaps with F4), lasts 1.5s
+    seq->events[5] = create_simple_event(melody_start + sample_rate * 2.0f, 293.66f, 1.5f, sample_rate);
+
+    // === Test 3: Final chord (F major triad) - simultaneous start ===
+    uint32_t final_chord_start = sample_rate * 7.0f;
+    seq->events[6] = create_simple_event(final_chord_start, 349.23f, 2.0f, sample_rate);  // F4
+    seq->events[7] = create_simple_event(final_chord_start, 440.00f, 2.0f, sample_rate);  // A4
+
+    // Adjust volume for final chord (only 2 notes, so 1/sqrt(2) ≈ 0.707)
+    int32_t final_chord_volume = (int32_t)(0.707f * 0x10000000);
+    seq->events[6]->volume_scale = final_chord_volume;
+    seq->events[7]->volume_scale = final_chord_volume;
+
+    // Calculate total song duration
+    seq->total_duration_samples = sample_rate * 10.0f; // 10 seconds total
+
+    printf("Created simultaneous notes test song with %zu events\n", seq->num_events);
+    printf("Test structure:\n");
+    printf("  0.0s: C major chord (C+E+G) - 2.0s duration\n");
+    printf("  3.0s: A4 melody note - 1.5s duration\n");
+    printf("  4.0s: F4 melody note (overlaps A4) - 1.5s duration\n");
+    printf("  5.0s: D4 melody note (overlaps F4) - 1.5s duration\n");
+    printf("  7.0s: F major chord (F+A) - 2.0s duration\n");
+    printf("Expected: Chord harmony, smooth overlapping melody, volume-balanced mixing\n");
     printf("Total duration: %lu samples (%.1f seconds)\n",
            seq->total_duration_samples, seq->total_duration_samples / (float)sample_rate);
 
